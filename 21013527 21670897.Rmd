@@ -1,0 +1,2829 @@
+---
+title: "Coronavirus in South Africa (21013527 & 21670897)"
+output: 
+  flexdashboard::flex_dashboard:
+    source: embed
+    vertical_layout: scroll
+    orientation: rows
+    theme: cosmo
+---
+<style>
+  body {
+    background-color: #14243E;
+    color: #FFFFFF;
+  }
+  .section {
+    background-color: #14243E;
+  }
+  .chart-title {
+    color: white;
+    background-color: #1a6ecc;
+  }
+  .chart-notes {
+    background-color: #14243E;
+    color: white;
+  }
+  .sourceCode r {
+    background-color: #010101;
+  }
+  h3 {
+    color: #FFFFFF;
+  }
+</style>
+
+
+# South Africa's Coronavirus Dashboard 
+
+```{r setup, include=FALSE}
+#Kyle van Antwerpen (21013527) & Tristan Luyt (21670897)
+#Knit the notebook to see full presentation. Final code and notes are under `# Code & Notes`.
+
+library(tidyverse)
+library(ggplot2)
+library(dplyr)
+library(ggrepel)
+library(ggpmisc)
+library(zoo)
+library(gridExtra)
+library(gt)
+library(plotly)
+library(flexdashboard)
+
+covid_data <- read.csv(file = "data_in/owid_covid_data.csv") %>% 
+  filter(iso_code=="ZAF") %>% 
+  mutate(date = as.Date(date, format = "%Y-%m-%d"))
+
+cum_daily_cases_province <- read.csv(file = "data_in/cum_cases_by_province.csv") %>%
+  rename("date" = ï..Specimen.received.date) %>% 
+  mutate(date = as.Date(date, format = "%Y-%m-%d"))
+
+cum_daily_cases_province[is.na(cum_daily_cases_province)] <- 0
+cum_daily_cases_province<-cum_daily_cases_province %>% 
+  mutate(total = rowSums(cum_daily_cases_province[,-1]))
+
+daily_cases_province <- cum_daily_cases_province %>%
+  transmute(date = as.Date(date, format = "%Y-%m-%d"),
+         Western_Cape_daily = c(Western.Cape[1], diff(Western.Cape)),
+         Northern_Cape_daily = c(Northern.Cape[1], diff(Northern.Cape)),
+         Eastern_Cape_daily = c(Eastern.Cape[1], diff(Eastern.Cape)),
+         Free_State_daily = c(Free.State[1], diff(Free.State)),
+         Gauteng_daily = c(Gauteng[1], diff(Gauteng)),
+         Kwazulu_Natal_daily = c(Kwazulu.Natal[1], diff(Kwazulu.Natal)),
+         Limpopo_daily = c(Limpopo[1], diff(Limpopo)),
+         Mpumalanga_daily = c(Mpumalanga[1], diff(Mpumalanga)),
+         North_West_daily = c(North.West[1], diff(North.West)))
+
+provinces <- read.csv(file = "data_in/provinces_csv.csv") %>% 
+  mutate(date = as.Date(date, format = "%Y-%m-%d")) 
+
+covid_data_cumulative <- read.csv(file = "data_in/Cumulative.csv") %>% 
+  mutate(date = as.Date(date, format = "%Y-%m-%d"))
+
+continents_data <- read.csv(file = "data_in/continents_daily.csv")
+rt_data <- read.csv(file = "data_in/calculated_rt_sa_provincial_cumulative.csv")
+covid_data_provinces <- read.csv(file = "data_in/Provinces.csv")
+covid_data_vaccinations <- read.csv(file = "data_in/Vaccinations.csv")
+covid_data_provincial_deaths <- read.csv(file = "data_in/covid19za_provincial_cumulative_timeline_deaths.csv")  
+epi_week = read.csv("data_in/epi week hospitals.csv")
+rt_estimates = read.csv("data_in/national_plus_provincial_rts (20).csv")
+excess_deaths_all = read.csv2("data_in/excess_death_all.csv")
+
+updated_date <- format(Sys.Date(), "%d %b %Y")
+
+```
+
+##
+
+### Daily Vaccinations
+
+```{r Daily Vaccinations & Total Vaccinations, echo=FALSE}
+daily_vac_data <- covid_data %>% 
+  select(date, new_vaccinations) %>%
+  drop_na()
+
+daily_vaccinations_plot <- ggplot(daily_vac_data) +
+  geom_col(mapping = aes(date, new_vaccinations), fill="#418D3F", width = 0.5) +
+  labs(
+    title = "Daily Vaccinations",
+    subtitle = "",
+    caption = paste(sep = " ", "Updated:", updated_date),
+    tag = ""
+  ) +
+  scale_y_continuous(labels = scales::comma, expand = c(0, 0), breaks = c(0,50000)) +
+  scale_x_date(date_breaks = "1 month", date_labels = "%d %b", expand = c(0, 0)) +
+  theme(
+    axis.title.x = element_blank(),
+    axis.title.y = element_blank(),
+    axis.ticks = element_blank(),
+    axis.text = element_text(colour="white"),
+    
+    plot.title = element_text(colour="white", size=14, face="bold", margin = margin(0, 0, 10, 0), hjust = -0.05),
+    plot.caption = element_text(colour="white", face="bold", hjust = -0.05),
+    plot.background = element_rect(fill = "#14243E"),
+    
+    panel.grid.major.y = element_line(colour = "white", linetype = "dotted"),
+    panel.grid.minor.y = element_blank(),
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor.x = element_blank(),
+    panel.background = element_blank()
+  )
+daily_vaccinations_plot
+```
+
+
+### Total Vaccinations
+```{r Total Vaccinations, echo=FALSE}
+total_vac_plot <- ggplot(covid_data %>% 
+  select(date, total_vaccinations) %>% 
+  drop_na(), aes(date, total_vaccinations)) +
+  geom_line(lwd=1.75, colour="#418D3F") +
+  labs(
+    title = "Total Vaccinations",
+    subtitle = "",
+    caption = paste(sep = " ", "Updated:", updated_date),
+    tag = ""
+  ) +
+  scale_y_continuous(labels = scales::comma, expand = c(0, 0)) +
+  scale_x_date(date_breaks = "1 month", date_labels = "%d-%m", expand = c(0, 0)) +
+  theme(
+    axis.title.x = element_blank(),
+    axis.title.y = element_blank(),
+    axis.ticks = element_blank(),
+    axis.text = element_text(colour="white"),
+    
+    plot.title = element_text(colour="white", size=14, face="bold", margin = margin(0, 0, 10, 0), hjust = -0.1),
+    plot.caption = element_text(colour="white", face="bold", hjust = -0.1),
+    plot.background = element_rect(fill = "#14243E"),
+    
+    panel.grid.major.y = element_line(colour = "white", linetype = "dotted"),
+    panel.grid.minor.y = element_blank(),
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor.x = element_blank(),
+    panel.background = element_blank()
+  )
+
+data_ends <- covid_data %>% filter(date == "2021-06-19")
+total_vac_plot <- total_vac_plot + 
+  geom_text_repel(
+    aes(label = total_vaccinations), data = data_ends,
+    fontface ="plain", color = "white", size = 4
+    )
+total_vac_plot
+```
+
+##
+
+### Daily confirmed cases
+
+```{r Daily confirmed cases, echo=FALSE, fig.width = 15}
+daily_confirmed_data <- covid_data %>% 
+  select(date, new_cases) %>%
+  drop_na()
+
+daily_confirmed_plot <- ggplot(daily_confirmed_data) +
+  geom_col(mapping = aes(date, new_cases), fill="#457B9D", width = 0.5) +
+  geom_line(mapping = aes(date, rollmean(new_cases, k = 7,na.pad=TRUE)), lwd=1.75 ,colour="#E63946", na.rm = TRUE) +
+  labs(
+    title = "Daily confirmed cases",
+    subtitle = "This chart shows the daily confirmed casese since March 2020. The levels refer to the lockdown levels. Red line is the 7-day rolling average.",
+    caption = paste(sep = " ", "Updated:", updated_date),
+    tag = ""
+  ) +
+  scale_y_continuous(labels = scales::comma, expand = c(0, 0), breaks = c(0,10000,20000)) +
+  scale_x_date(date_breaks = "1 month", date_labels = "%d %b", expand = c(0, 0)) +
+  theme(
+    axis.title.x = element_blank(),
+    axis.title.y = element_blank(),
+    axis.ticks = element_blank(),
+    axis.text = element_text(colour="white"),
+    
+    plot.title = element_text(colour="white", size=14, face="bold", margin = margin(0, 0, 10, 0), hjust = 0),
+    plot.caption = element_text(colour="white", face="bold", hjust = 0),
+    plot.subtitle  = element_text(colour="white", face="bold", hjust = 0),
+    plot.background = element_rect(fill = "#14243E"),
+    
+    panel.grid.major.y = element_line(colour = "white", linetype = "dotted"),
+    panel.grid.minor.y = element_blank(),
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor.x = element_blank(),
+    panel.background = element_blank()
+  )
+
+daily_confirmed_plot
+```
+
+##
+
+### Active case total by day
+
+```{r Active case total by day, echo=FALSE}
+active_cases_total_plot <- ggplot(provinces, aes(date, active_cases)) +
+  geom_col(fill = "#457B9D") +
+  labs(
+      title = "Active case total by day",
+      subtitle = "",
+      caption = paste(sep = " ", "Updated:", updated_date),
+      tag = ""
+    ) +
+    scale_y_continuous(labels = scales::comma, expand = c(0, 0), breaks = c(0, 100000, 200000)) +
+   scale_x_date(date_breaks = "1 month", date_labels = "%d %b", expand = c(0, 0)) +
+    theme(
+      axis.title.x = element_blank(),
+      axis.title.y = element_blank(),
+      axis.ticks = element_blank(),
+      axis.text = element_text(colour="white"),
+      
+      plot.title = element_text(colour="white", size=14, face="bold", margin = margin(0, 0, 10, 0), hjust = 0),
+      plot.caption = element_text(colour="white", face="bold", hjust = 0),
+      plot.background = element_rect(fill = "#14243E"),
+      
+      panel.grid.major.y = element_line(colour = "white", linetype = "dotted"),
+      panel.grid.minor.y = element_blank(),
+      panel.grid.major.x = element_blank(),
+      panel.grid.minor.x = element_blank(),
+      panel.background = element_blank()
+    )
+active_cases_total_plot
+```
+
+### Daily deaths
+
+```{r Daily deaths, echo=FALSE}
+daily_deaths_plot <- ggplot(daily_death_data <- covid_data %>% select(date, new_deaths) %>% drop_na()) +
+  geom_col(mapping = aes(date, new_deaths), fill="#457B9D", width = 0.5) +
+  labs(
+    title = "Daily deaths",
+    subtitle = "",
+    caption = paste(sep = " ", "Updated:", updated_date),
+    tag = ""
+  ) +
+  scale_y_continuous(labels = scales::comma, expand = c(0, 0)) +
+  scale_x_date(date_breaks = "1 month", date_labels = "%d %b", expand = c(0, 0)) +
+  theme(
+    axis.title.x = element_blank(),
+    axis.title.y = element_blank(),
+    axis.ticks = element_blank(),
+    axis.text = element_text(colour="white"),
+    
+    plot.title = element_text(colour="white", size=14, face="bold", margin = margin(0, 0, 10, 0), hjust = 0),
+    plot.caption = element_text(colour="white", face="bold", hjust = 0),
+    plot.background = element_rect(fill = "#14243E"),
+    
+    panel.grid.major.y = element_line(colour = "white", linetype = "dotted"),
+    panel.grid.minor.y = element_blank(),
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor.x = element_blank(),
+    panel.background = element_blank()
+  )
+
+daily_deaths_plot
+```
+
+##
+
+### Daily case trends
+
+```{r Daily case trends, echo=FALSE, fig.width=15}
+#Add first and last date
+long_daily_cases_province <- pivot_longer(daily_cases_province[which(daily_cases_province$date > "2020-11-10"),], cols = -date, names_to = "province", values_to = "daily_cases") %>% 
+  arrange(desc(province))
+
+daily_trends_plot <- ggplot(long_daily_cases_province, aes(date,  rollmean(daily_cases, k = 7, na.pad=TRUE))) +
+  geom_line(colour = "#E63946", lwd=1.75) +
+  facet_wrap(vars(long_daily_cases_province$province),nrow = 2, ncol = 5) +
+  labs(
+    title = "Daily case trends",
+    subtitle = "These charts show the seven-day average of daily new cases for the past eight months. The seven-day average is used to even out spikes in daily cases.",
+    caption = paste(sep = " ", "Updated:", updated_date),
+    tag = ""
+  ) +
+  scale_x_date(date_breaks = "7 month", date_labels = "%d %b", expand = c(0, 0)) +
+  theme(
+    axis.title.x = element_blank(),
+    axis.title.y = element_blank(),
+    axis.text.y = element_blank(),
+    axis.ticks = element_blank(),
+    axis.text = element_text(colour="white"),
+    
+    plot.title = element_text(colour="white", size=14, face="bold", margin = margin(0, 0, 10, 0), hjust = 0),
+    plot.subtitle = element_text(colour= "white"),
+    plot.caption = element_text(colour="white", face="bold", hjust = 0),
+    plot.background = element_rect(fill = "#14243E"),
+    
+    panel.grid.major.y = element_blank(),
+    panel.grid.minor.y = element_blank(),
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor.x = element_blank(),
+    panel.background = element_blank()
+  )
+
+daily_trends_plot
+```
+
+
+##
+
+### Cases vs Active Cases
+
+```{r Cases vs Active Cases, echo=FALSE}
+cases_vs_active_plot <- ggplot() +
+  geom_line(provinces %>% group_by(date) %>% summarise(max = sum(cumulative_cases)), mapping = aes(date, max, colour="Confirmed cases"), na.rm = TRUE , lwd=1.5) +
+  geom_line(provinces %>% group_by(date) %>% summarise(max = sum(active_cases)), mapping = aes(date, max, colour="Active cases") , lwd=1.5) +
+  labs(
+      title = "Cases vs Active Cases",
+      subtitle = "",
+      caption = paste(sep = " ", "Updated:", updated_date),
+      tag = ""
+    ) +
+    scale_y_continuous(limits = c(0,2000000), labels = scales::comma, expand = c(0, 0)) +
+    scale_x_date(date_breaks = "3 month", date_labels = "%d/%m", expand = c(0, 0)) +
+    scale_colour_manual(values = c("#457B9D", "#E63946")) +
+    theme(
+      axis.title.x = element_blank(),
+      axis.title.y = element_blank(),
+      axis.ticks = element_blank(),
+      axis.text = element_text(colour="white"),
+      
+      legend.justification=c(0,0),
+      legend.position=c(0,0.8),
+      legend.background = element_blank(),
+      legend.text = element_text(colour = "white"),
+      legend.key = element_blank(),
+      legend.title = element_blank(),
+      
+      plot.title = element_text(colour="white", size=14, face="bold", margin = margin(0, 0, 10, 0), hjust = 0),
+      plot.caption = element_text(colour="white", face="bold", hjust = 0),
+      plot.background = element_rect(fill = "#14243E"),
+      
+      panel.grid.major.y = element_line(colour = "white", linetype = "dotted"),
+      panel.grid.minor.y = element_blank(),
+      panel.grid.major.x = element_blank(),
+      panel.grid.minor.x = element_blank(),
+      panel.background = element_blank()
+    )
+
+cases_vs_active_plot
+```
+
+
+### Total Deaths
+
+```{r Total Deaths, echo=FALSE}
+#Fix labels on graph
+#deaths/population <- percentage
+total_deaths_plot <- ggplot() +
+  geom_line(covid_data %>% select(date, total_deaths) %>% drop_na(), mapping = aes(date, total_deaths, colour="Total Deaths"), lwd=1.5, na.rm = TRUE)  + 
+  geom_line(covid_data %>% group_by(date) %>% summarise(CFR = (total_deaths/total_cases)*1000000), mapping = aes(date, CFR, colour="Case Fatality Rate (CFR%)"),lwd=1.5, na.rm = TRUE) +
+  labs(
+    title = "Total Deaths",
+    subtitle = "",
+    caption = paste(sep = " ", "Updated:", updated_date),
+    tag = ""
+  ) +
+  scale_y_continuous(limits = c(0, 80000), labels = scales::comma, expand = c(0, 0), breaks = c(0, 20000,40000,60000,80000), sec.axis = sec_axis(~ . /10000,  name = "")) +
+  scale_x_date(date_breaks = "3 month", date_labels = "%d/%m", expand = c(0, 0)) +
+  scale_colour_manual(values = c("#BC2424", "#457B9D")) +
+  theme(
+    axis.title.x = element_blank(),
+    axis.title.y = element_blank(),
+    axis.ticks = element_blank(),
+    axis.text = element_text(colour="white"),
+    
+    plot.title = element_text(colour="white", size=14, face="bold", margin = margin(0, 0, 10, 0), hjust = 0),
+    plot.caption = element_text(colour="white", face="bold", hjust = 0),
+    plot.background = element_rect(fill = "#14243E"),
+    
+    legend.justification=c(0,0),
+    legend.position=c(0,0.8),
+    legend.background = element_blank(),
+    legend.text = element_text(colour = "white"),
+    legend.key = element_blank(),
+    legend.title = element_blank(),
+  
+    panel.grid.major.y = element_line(colour = "white", linetype = "dotted"),
+    panel.grid.minor.y = element_blank(),
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor.x = element_blank(),
+    panel.background = element_blank()
+  )
+
+
+data_ends <- covid_data %>% filter(date == "2021-06-20")
+total_deaths_plot <- total_deaths_plot + 
+  geom_text_repel(
+    aes(date, total_deaths, label = total_deaths), data = data_ends,
+    fontface ="bold", color = "white", size = 4
+    )
+total_deaths_plot
+```
+
+### Doubling Rates
+
+```{r Doubling Rates, echo=FALSE}
+dbl_rate_data <- covid_data %>%
+  filter(date >= "2020-10-01", date <="2021-06-20") %>% 
+  select(date, total_cases, total_deaths) %>%
+  drop_na()
+
+dbl_rate_data <- dbl_rate_data %>% 
+  mutate(c_doubling_rate =  2* abs(log(2)/log(lag(as.numeric(dbl_rate_data$total_cases), n = 7)/dbl_rate_data$total_cases))) %>% 
+  mutate(d_doubling_rate =  2*abs(log(2)/log(lag(as.numeric(dbl_rate_data$total_deaths), n = 7)/dbl_rate_data$total_deaths)))
+
+
+#abs(lag(as.numeric(rownames(dbl_rate_data)), n = 7) - as.numeric(rownames(dbl_rate_data)))
+
+doubling_rate_plot <- ggplot() +
+  geom_line(dbl_rate_data, mapping = aes(date, rollmean(c_doubling_rate, k = 30, na.pad = TRUE), colour="Confirmed Cases"), na.rm = TRUE, lwd = 1.5) +
+  geom_line(dbl_rate_data, mapping = aes(date, rollmean(d_doubling_rate, k = 30, na.pad = TRUE), colour="Deaths"), na.rm = TRUE, lwd = 1.5) +
+  labs(
+      title = "Doubling Rates",
+      subtitle = "",
+      caption = paste(sep = " ", "Updated:", updated_date),
+      tag = ""
+    ) +
+    scale_y_log10(labels = scales::comma, expand = c(0, 0)) +
+    scale_x_date(date_breaks = "3 month", date_labels = "%d/%m", expand = c(0, 0)) +
+    scale_colour_manual(name="", values=c("#457B9D", "#BC2424")) +
+    theme(
+      axis.title.x = element_blank(),
+      axis.title.y = element_blank(),
+      axis.ticks = element_blank(),
+      axis.text = element_text(colour="white"),
+
+      legend.justification=c(0,0),
+      legend.position=c(0,0.8),
+      legend.background = element_blank(),
+      legend.text = element_text(colour = "white"),
+      legend.key = element_blank(),
+
+      plot.title = element_text(colour="white", size=14, face="bold", margin = margin(0, 0, 10, 0), hjust = 0),
+      plot.caption = element_text(colour="white", face="bold", hjust = 0),
+      plot.background = element_rect(fill = "#14243E"),
+
+      panel.grid.major.y = element_line(colour = "white", linetype = "dotted"),
+      panel.grid.minor.y = element_blank(),
+      panel.grid.major.x = element_blank(),
+      panel.grid.minor.x = element_blank(),
+      panel.background = element_blank()
+    )
+doubling_rate_plot
+```
+
+##
+
+### Deaths by Province
+
+```{r Deaths by Province, echo=FALSE}
+#factor into pipeline
+deaths_by_province <- provinces %>% 
+  select(province_id, deaths_per_100k, cumulative_deaths) %>% 
+  group_by(province_id) %>% 
+  summarise(max_deaths = max(cumulative_deaths), max_100k = max(deaths_per_100k)) %>% 
+  arrange(desc(max_deaths)) %>% 
+  mutate(province_id = factor(province_id, levels = province_id))
+
+
+deaths_province_plot <- ggplot(deaths_by_province, mapping = aes(province_id, max_deaths)) +
+  geom_bar(stat="identity", fill = "#E63946") +
+  geom_text(mapping = aes(label = max_deaths), nudge_y = 800,colour ="white") +
+  labs(
+      title = "Death by Province",
+      subtitle = "",
+      caption = paste(sep = " ", "Updated:", updated_date),
+      tag = ""
+    ) +
+    scale_y_continuous(limits=c(0, 15000), labels = scales::comma, expand = c(0, 0)) +
+    theme(
+      axis.title.x = element_blank(),
+      axis.title.y = element_blank(),
+      axis.ticks = element_blank(),
+      axis.text.x = element_text(colour="white"),
+      axis.text.y = element_blank(),
+      
+      plot.title = element_text(colour="white", size=14, face="bold", margin = margin(0, 0, 10, 0), hjust = 0),
+      plot.caption = element_text(colour="white", face="bold", hjust = 0),
+      plot.background = element_rect(fill = "#14243E"),
+      
+      panel.grid.major.y = element_blank(),
+      panel.grid.minor.y = element_blank(),
+      panel.grid.major.x = element_blank(),
+      panel.grid.minor.x = element_blank(),
+      panel.background = element_blank()
+    )
+deaths_province_plot
+```
+
+### Deaths by Province (per 100k)
+
+```{r Deaths by Province (per 100k), echo=FALSE}
+deaths_prov_100k_plot <- ggplot(deaths_by_province, mapping = aes(province_id, max_100k)) +
+  geom_bar(stat="identity", fill = "#E63946") +
+  geom_text(mapping= aes(label = max_100k), nudge_y = 10,colour ="white") +
+  labs(
+      title = "Death by Province (per 100k)",
+      subtitle = "",
+      caption = paste(sep = " ", "Updated:", updated_date),
+      tag = ""
+    ) +
+    scale_y_continuous(limits=c(0, 200), labels = scales::comma, expand = c(0, 0)) +
+    theme(
+      axis.title.x = element_blank(),
+      axis.title.y = element_blank(),
+      axis.ticks = element_blank(),
+      axis.text.x = element_text(colour="white"),
+      axis.text.y = element_blank(),
+      
+      plot.title = element_text(colour="white", size=14, face="bold", margin = margin(0, 0, 10, 0), hjust = 0),
+      plot.caption = element_text(colour="white", face="bold", hjust = 0),
+      plot.background = element_rect(fill = "#14243E"),
+      
+      panel.grid.major.y = element_blank(),
+      panel.grid.minor.y = element_blank(),
+      panel.grid.major.x = element_blank(),
+      panel.grid.minor.x = element_blank(),
+      panel.background = element_blank()
+    )
+deaths_prov_100k_plot
+```
+
+### Prov infections per 100,000 Population
+
+```{r Prov infections per 100000 Population, echo=FALSE}
+cases_per_100k <-provinces %>% 
+  select(province, population, cumulative_cases) %>% 
+  group_by(province) %>% 
+  summarise(cases_per_100k = max(cumulative_cases/population) * 100000) %>% 
+  arrange(cases_per_100k)
+
+cases_per_100k$province <- factor(cases_per_100k$province, levels = cases_per_100k$province)
+
+
+prov_inf_100k_plot <- ggplot(cases_per_100k, mapping = aes(province, cases_per_100k)) +
+  geom_bar(stat="identity", fill = "#E63946") +
+  geom_text(mapping = aes(label = round(cases_per_100k, digits = 2)), nudge_y = 300, colour ="white") +
+  labs(
+      title = "Prov infections per 100,000 Population",
+      subtitle = "",
+      caption = paste(sep = " ", "Updated:", updated_date),
+      tag = ""
+    ) +
+    coord_flip()+
+    scale_y_continuous(limits=c(0, 5200), labels = scales::comma, expand = c(0, 0)) +
+    theme(
+      axis.title.x = element_blank(),
+      axis.title.y = element_blank(),
+      axis.ticks = element_blank(),
+      axis.text.y = element_text(colour="white"),
+      axis.text.x = element_blank(),
+      
+      plot.title = element_text(colour="white", size=14, face="bold", margin = margin(0, 0, 10, 0), hjust = 0),
+      plot.caption = element_text(colour="white", face="bold", hjust = 0),
+      plot.background = element_rect(fill = "#14243E"),
+      
+      panel.grid.major.y = element_blank(),
+      panel.grid.minor.y = element_blank(),
+      panel.grid.major.x = element_blank(),
+      panel.grid.minor.x = element_blank(),
+      panel.background = element_blank()
+    )
+prov_inf_100k_plot
+```
+
+##
+
+### Confirmed and Active Cases by Province
+
+```{r Confirmed and Active Cases by Province, echo=FALSE,fig.width=15}
+#display active =
+confirm_active_prov_plot <- ggplot() +
+  geom_line(provinces %>% group_by(date, province) %>% summarise(max = sum(cumulative_cases)), mapping = aes(date, max, colour="Confirmed"),  na.rm = TRUE, lwd = 1.75) +
+  geom_line(provinces%>% group_by(date, province) %>% summarise(max = sum(active_cases)), mapping = aes(date, max,  colour="Active"),  lwd = 1.75) +
+  facet_wrap(vars(province), nrow = 2, ncol = 5) +
+  labs(
+      title = "Confirmed and Active Cases by Province",
+      subtitle = "",
+      caption = paste(sep = " ", "Updated:", updated_date),
+      tag = ""
+    ) +
+    scale_y_continuous(labels = scales::comma, expand = c(0, 0)) +
+    scale_x_date(date_breaks = "3 month", date_labels = "%d/%m", expand = c(0, 0)) +
+   scale_colour_manual(values = c("#BC2424", "#457B9D")) +
+    theme(
+      axis.title.x = element_blank(),
+      axis.title.y = element_blank(),
+      axis.ticks = element_blank(),
+      axis.text = element_blank(),
+
+      plot.title = element_text(colour="white", size=14, face="bold", margin = margin(0, 0, 10, 0), hjust = 0),
+      plot.caption = element_text(colour="white", face="bold", hjust = 0),
+      plot.background = element_rect(fill = "#14243E"),
+      
+      legend.justification=c(0,0),
+      legend.position=c(0,0.8),
+      legend.background = element_blank(),
+      legend.text = element_text(colour = "white"),
+      legend.key = element_blank(),
+      legend.title = element_blank(),
+      
+      
+      panel.grid.major.y = element_blank(),
+      panel.grid.minor.y = element_blank(),
+      panel.grid.major.x = element_blank(),
+      panel.grid.minor.x = element_blank(),
+      panel.background = element_blank()
+    )
+confirm_active_prov_plot
+```
+
+##
+
+### Average daily tests per week 
+
+```{r Average daily tests per week, echo=FALSE, fig.height=10}
+positive_cases_tests <- covid_data_cumulative %>% 
+  filter(date >= "2020-04-03", date <= "2021-06-25") %>% 
+  select(date, week_label, weekly_tests, weekly_cases, cases_daily) %>% 
+  arrange(desc(date)) %>% 
+  mutate(weekly_tests_week_avg = round(weekly_tests/7, 3)) %>% 
+  mutate(weekly_cases_week_avg =  round(weekly_cases/7, 3)) %>% 
+  mutate(date_name = as.character(date)) %>% 
+  mutate(rate = round((weekly_tests_week_avg/7)/(weekly_cases_week_avg/7), 3)) %>% 
+  drop_na()
+  
+
+positive_cases_tests$week_label <- factor(positive_cases_tests$week_label, levels = positive_cases_tests$week_label)
+
+avg_daily_tests_plot <- ggplot(positive_cases_tests %>% filter(date >= "2020-04-03", date <= "2021-06-25"), aes(weekly_tests_week_avg, week_label)) +
+  geom_bar(stat = "identity", fill = "#E63946", width = 0.75) +
+  geom_text(mapping = aes(label = weekly_tests_week_avg), size = 3, nudge_x = 2000, colour = "white") +
+  labs(
+    title = "Average daily tests per week",
+    subtitle = "",
+    caption = paste(sep = " ", "Updated:", updated_date),
+    tag = ""
+  ) +
+  scale_x_continuous(labels = scales::comma, expand = c(0, 0)) +
+  theme(
+    axis.title.x = element_blank(),
+    axis.title.y = element_blank(),
+    axis.text.x = element_blank(),
+    axis.text.y = element_text(colour="white"),
+    axis.ticks.y =  element_blank(),
+    axis.ticks.x =  element_blank(),
+
+    plot.title = element_text(colour="white", size=14, face="bold", margin = margin(0, 0, 10, 0), hjust = 0),
+    plot.caption = element_text(colour="white", face="bold", hjust = 0),
+    plot.background = element_rect(fill = "#14243E"),
+
+    panel.grid.major.y = element_blank(),
+    panel.grid.minor.y = element_blank(),
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor.x = element_blank(),
+    panel.background = element_blank()
+  )
+  
+avg_daily_tests_plot
+```
+
+### Average daily positives per week
+
+```{r Average daily positives per week, echo=FALSE, fig.height=10}
+avg_daily_pos_plot <- ggplot(positive_cases_tests , aes(weekly_cases,week_label)) +
+  geom_bar(stat = "identity", fill = "#E63946", width = 0.75) +
+  geom_text(mapping = aes(label = weekly_cases), size = 3, nudge_x = 2000, colour = "white") +
+  labs(
+    title = "Average daily positives per week",
+    subtitle = "",
+    caption = paste(sep = " ", "Updated:", updated_date),
+    tag = ""
+  ) +
+  scale_x_continuous(labels = scales::comma, expand = c(0, 0)) +
+  theme(
+    axis.title.x = element_blank(),
+    axis.title.y = element_blank(),
+    axis.text.x = element_blank(),
+    axis.text.y = element_text(colour="white"),
+    axis.ticks.y =  element_blank(),
+    axis.ticks.x =  element_blank(),
+
+    plot.title = element_text(colour="white", size=14, face="bold", margin = margin(0, 0, 10, 0), hjust = 0),
+    plot.caption = element_text(colour="white", face="bold", hjust = 0),
+    plot.background = element_rect(fill = "#14243E"),
+
+    panel.grid.major.y = element_blank(),
+    panel.grid.minor.y = element_blank(),
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor.x = element_blank(),
+    panel.background = element_blank()
+  )
+avg_daily_pos_plot
+```
+
+### No of tests per positive case (weekly)
+
+```{r No of tests per positive case (weekly), echo=FALSE, fig.height=10}
+num_tests_pos_plot <- ggplot(positive_cases_tests, aes(rate, week_label)) +
+  geom_bar(stat = "identity", fill = "#E63946", width = 0.75) +
+  geom_text(mapping = aes(label = rate), size = 3, nudge_x = 1, colour = "white") +
+  labs(
+      title = "No of tests per positive case (weekly)",
+      subtitle = "",
+      caption = paste(sep = " ", "Updated:", updated_date),
+      tag = ""
+    ) +
+    scale_x_continuous(labels = scales::comma, expand = c(0, 0)) +
+    theme(
+      axis.title.x = element_blank(),
+      axis.title.y = element_blank(),
+      axis.text.x = element_blank(),
+      axis.text.y = element_text(colour="white"),
+      axis.ticks.y =  element_blank(),
+      axis.ticks.x =  element_blank(),
+  
+      plot.title = element_text(colour="white", size=14, face="bold", margin = margin(0, 0, 10, 0), hjust = 0),
+      plot.caption = element_text(colour="white", face="bold", hjust = 0),
+      plot.background = element_rect(fill = "#14243E"),
+  
+      panel.grid.major.y = element_blank(),
+      panel.grid.minor.y = element_blank(),
+      panel.grid.major.x = element_blank(),
+      panel.grid.minor.x = element_blank(),
+      panel.background = element_blank()
+    )
+num_tests_pos_plot
+```
+
+##
+
+### Daily Tests and Positive Cases 
+
+```{r Daily Tests and Positive Cases, echo=FALSE}
+pos_daily_tests <- covid_data_cumulative %>% 
+  arrange(date) %>% 
+  select(date, tests_daily, cases_daily) %>% 
+  filter(tests_daily >= 0) %>% 
+  drop_na()
+ 
+daily_tests_and_pos_plot <- ggplot(pos_daily_tests, aes(date, tests_daily, size = cases_daily)) +
+  geom_point(stat = "identity", colour = "#E63946", fill = "#418D3F") +
+  geom_text(label = pos_daily_tests$cases_daily, size = 2, colour = "white", nudge_y = 10000, check_overlap = TRUE) +
+  scale_x_date(date_breaks = "1 month", date_labels = ("%d/%m")) +
+  labs(
+      title = "Number of tests per day",
+      subtitle = "",
+      caption = paste(sep = " ", "Updated:", updated_date),
+      tag = ""
+    ) +
+    theme(
+      axis.title.x = element_blank(),
+      axis.title.y = element_blank(),
+      axis.text.x = element_text(colour="white"),
+      axis.text.y = element_text(colour="white"),
+      axis.ticks.y =  element_blank(),
+  
+      plot.title = element_text(colour="white", size=14, face="bold", margin = margin(0, 0, 10, 0), hjust = 0),
+      plot.caption = element_text(colour="white", face="bold", hjust = 0),
+      plot.background = element_rect(fill = "#14243E"),
+      
+      legend.justification=c(0,0),
+      legend.position=c(0,-1),
+      legend.background = element_blank(),
+      legend.text = element_blank(),
+      legend.key = element_blank(),
+      legend.title = element_blank(),
+        
+  
+      panel.grid.major.y = element_line(colour = "white", linetype = "dotted"),
+      panel.grid.minor.y = element_blank(),
+      panel.grid.major.x = element_blank(),
+      panel.grid.minor.x = element_blank(),
+      panel.background = element_blank()
+    )
+daily_tests_and_pos_plot
+```
+
+### Confirmed Infections (last 20 days)
+
+```{r Confirmed Infections (last 20 days), echo=FALSE}
+covid_data_cumulative_20_days <- covid_data_cumulative %>% 
+          filter(date > "2021-06-02" & date < "2021-06-22") %>% 
+          arrange(desc(date)) %>% 
+          mutate(date_ch = as.character(date)) %>% 
+          mutate(date_ch = factor(date_ch, levels = date_ch))
+
+confirmed_inf_plot <- ggplot(covid_data_cumulative_20_days, aes(date_ch ,cases_daily)) +
+   geom_bar(stat = "identity", fill = "#E63946", width = 0.75) +
+   geom_text(mapping = aes(label = cases_daily), size = 3, nudge_y = 300, colour = "white") +
+   coord_flip() +
+  
+  labs(
+        title = "No of tests per positive case (weekly)",
+        subtitle = "",
+        caption = paste(sep = " ", "Updated:", updated_date),
+        tag = ""
+      ) +
+      theme(
+        axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        axis.text.x = element_blank(),
+        axis.text.y = element_text(colour="white"),
+        axis.ticks.y =  element_blank(),
+        axis.ticks.x =  element_blank(),
+      
+    
+        plot.title = element_text(colour="white", size=14, face="bold", margin = margin(0, 0, 10, 0), hjust = 0),
+        plot.caption = element_text(colour="white", face="bold", hjust = 0),
+        plot.background = element_rect(fill = "#14243E"),
+    
+        panel.grid.major.y = element_blank(),
+        panel.grid.minor.y = element_blank(),
+        panel.grid.major.x = element_blank(),
+        panel.grid.minor.x = element_blank(),
+        panel.background = element_blank()
+      )
+confirmed_inf_plot
+```
+
+##
+
+### Positivity Rate Number of Tests vs Positive Cases
+
+```{r Positivity Rate Number of Tests vs Positive Cases, echo=FALSE, fig.width=15}
+pos_rate <- covid_data_cumulative %>%
+  filter(date >= "2021-05-25", date <= "2021-06-20") %>%
+  arrange(date) %>% mutate(perc_positive = gsub("%", "", perc_positive), seven_day_average = gsub("%", "", seven_day_average)) %>%
+  mutate(perc_positive = as.integer(perc_positive), seven_day_average = as.integer(seven_day_average))
+
+pos_rate_plot <- ggplot(pos_rate, aes(x = date)) +
+  geom_bar(stat = "identity", fill = "#457B9D", mapping = aes(y = tests_daily),na.rm=TRUE, width = 0.75) +
+  geom_line(color = "#E63946", mapping = aes(y = perc_positive*2420),na.rm=TRUE, lwd=1.5) +
+  geom_smooth(fullrange=TRUE, method = 'lm', formula = "y ~ x", linetype="dotted", color = "white", mapping = aes(y = rollmean(perc_positive * 2400, k = 7, na.pad=TRUE)),na.rm=TRUE, lwd=1.5, alpha = 0) +
+  scale_x_date(breaks = "1 day", date_labels = "%d/%m", expand = c(0, 0)) +
+  scale_y_continuous(labels = scales::comma, expand = c(0, 0), n.breaks = 10) +
+    labs(
+          title = "Positivity Rate: Number of Tests vs Positive Cases (%)",
+          subtitle = "",
+          caption = paste(sep = " ", "Updated:", updated_date),
+          tag = ""
+        ) +
+        theme(
+          axis.title.x = element_blank(),
+          axis.title.y = element_blank(),
+          axis.text.x = element_text(colour="white"),
+          axis.text.y = element_text(colour="white"),
+          axis.ticks.y =  element_blank(),
+  
+          plot.title = element_text(colour="white", size=14, face="bold", margin = margin(0, 0, 10, 0), hjust = 0),
+          plot.caption = element_text(colour="white", face="bold", hjust = 0),
+          plot.background = element_rect(fill = "#14243E"),
+  
+          panel.grid.major.y = element_line(colour = "white", linetype = "dotted"),
+          panel.grid.minor.y = element_blank(),
+          panel.grid.major.x = element_blank(),
+          panel.grid.minor.x = element_blank(),
+          panel.background = element_blank()
+        )
+pos_rate_plot
+```
+
+##
+
+### National Hospital Admissions
+
+```{r National Hospital Admissions, echo=FALSE, fig.width=13}
+epi_week_mutated <- epi_week %>%
+arrange(year) %>%
+mutate(week_start = factor(week_start, levels = week_start)) %>%
+mutate(week = gsub("\\s", "0", format(epi_week$week, width=max(nchar(epi_week$week))))) %>%
+mutate(week = as.numeric(week)) %>%
+mutate(week = as.Date(week, format = "%W")) %>%
+arrange(year, week) %>%
+mutate(week_start = as.Date(week_start, format = "%Y-%m-%d"))
+
+
+
+hosp_admissions_plot <- ggplot(epi_week_mutated, aes(x = week_start, y = total_national_hospital_admissions)) +
+geom_line(stat = "identity", lwd = 1.75, colour = "#E63946") +
+  scale_x_date(date_breaks = "1 week", date_labels = ("%W"), expand = c(0,0)) +
+  scale_y_continuous(limits = c(0, 20000), labels = scales::comma, expand = c(0, 0)) +
+  labs(
+        title = "No of tests per positive case (weekly)",
+        subtitle = "",
+        caption = paste(sep = " ", "Updated:", updated_date),
+        tag = ""
+      ) +
+      theme(
+        axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        axis.text.x = element_text(colour="white"),
+        axis.text.y = element_text(colour="white"),
+        axis.ticks.y =  element_blank(),
+    
+        plot.title = element_text(colour="white", size=14, face="bold", margin = margin(0, 0, 10, 0), hjust = 0),
+        plot.caption = element_text(colour="white", face="bold", hjust = 0),
+        plot.background = element_rect(fill = "#14243E"),
+    
+        panel.grid.major.y = element_line(colour = "white", linetype = "dotted"),
+        panel.grid.minor.y = element_blank(),
+        panel.grid.major.x = element_blank(),
+        panel.grid.minor.x = element_blank(),
+        panel.background = element_blank()
+      )
+hosp_admissions_plot
+```
+
+### Public vs. Private Tests
+
+```{r Public vs Private Tests, echo=FALSE}
+tests_table <- covid_data_cumulative %>%
+  filter(date == "2021-06-20") %>%
+  select(cumulative_tests, public_tests, private_tests, new_public_tests, new_private_tests) %>%
+  rename(Total_Tests = cumulative_tests, Total_Public_Tests = public_tests, Total_Private_Tests = private_tests, New_Public_Tests = new_public_tests, New_Private_Tests = new_private_tests) %>%
+  mutate(Total_Public_Tests = as.integer(Total_Public_Tests), Total_Tests = as.integer(Total_Tests), Total_Private_Tests = as.integer(Total_Private_Tests), New_Public_Tests = as.integer(New_Public_Tests), New_Private_Tests = as.integer(New_Private_Tests)) %>%
+  mutate(Total_New_Tests = (New_Private_Tests + New_Public_Tests)) %>%
+  mutate(Total_Public_Tests = paste(Total_Public_Tests, round(Total_Public_Tests / Total_Tests * 100, digits = 1), sep = ": % = ")) %>%
+  mutate(Total_Private_Tests = paste(Total_Private_Tests, round(Total_Private_Tests / Total_Tests * 100, digits = 1), sep = ": % = ")) %>%
+  mutate(New_Private_Tests = paste(New_Private_Tests, round(New_Private_Tests / Total_New_Tests * 100, digits = 1), sep = ": % = ")) %>%
+  mutate(New_Public_Tests = paste(New_Public_Tests, round(New_Public_Tests / Total_New_Tests * 100, digits = 1), sep = ": % = ")) %>%
+  mutate(Total_Public_Tests = as.character(Total_Public_Tests), Total_Tests = as.character(Total_Tests), Total_Private_Tests = as.character(Total_Private_Tests), New_Public_Tests = as.character(New_Public_Tests), New_Private_Tests = as.character(New_Private_Tests)) %>%
+  select(-Total_New_Tests) %>%
+  pivot_longer(cols = everything(), names_to = "Test.Data", values_to = "Amount") %>%
+  mutate(Test.Data = (gsub("_", " ", Test.Data))) %>%
+  gt() %>%
+    tab_header(
+    title = "Public vs. Private Tests",
+  ) %>%
+    data_color(
+    columns = "Test.Data",
+    colors = "#E63946",
+    alpha = NULL,
+    apply_to = c("fill", "text"),
+    autocolor_text = TRUE
+  )
+tests_table
+```
+
+##
+
+### Current Rt estimates for South Africa
+
+```{r Current Rt estimates for South Africa, echo=FALSE, fig.width=15}
+rt_estimates <- rt_estimates %>%
+  select(date, location, mlrt, low, high) %>%
+  mutate(date = as.Date(date, format = "%Y-%m-%d")) %>%
+  filter(location == "total")
+
+
+rt_plot <- ggplot(data = rt_estimates,mapping = aes(x = date, y = mlrt)) +
+  geom_point(expand = c(0, 0), colour = "#E63946") +
+  geom_line(expand = c(0, 0), colour = "#E63946") +
+  geom_ribbon(mapping = aes(ymin = low, ymax = high, colour = "90% CREDIBLE INTERVAL"), alpha = 0.2) +
+  scale_x_date(breaks = "4 months", date_labels = "%m %Y", expand = c(0,0)) +
+  scale_y_continuous(limits = c(0,3), labels = scales::comma, expand = c(0, 0)) +
+  coord_cartesian(ylim=c(0, 3), expand = c(0,0)) +
+    labs(
+          title = "Current Rt estimates for South Africa",
+          subtitle = "This chart displays the latest reproduction estimates for South Africa.",
+          caption = paste(sep = " ", "Updated:", updated_date),
+          tag = ""
+        ) +
+        theme(
+          axis.title.x = element_blank(),
+          axis.title.y = element_blank(),
+          axis.text.x = element_text(colour="white"),
+          axis.text.y = element_text(colour="white"),
+          axis.ticks.y =  element_blank(),
+          
+          legend.justification=c(0,0),
+          legend.position=c(0.8, 1),
+          legend.background = element_blank(),
+          legend.text = element_text(colour = "white"),
+          legend.key = element_blank(),
+          legend.title = element_blank(),
+      
+          plot.title = element_text(colour="white", size=14, face="bold", margin = margin(0, 0, 10, 0), hjust = 0),
+          plot.caption = element_text(colour="white", face="bold", hjust = 0),
+          plot.subtitle = element_text(colour="white", face="bold", hjust = 0),
+          plot.background = element_rect(fill = "#14243E"),
+      
+          panel.grid.major.y = element_line(colour = "white", linetype = "dotted"),
+          panel.grid.minor.y = element_blank(),
+          panel.grid.major.x = element_blank(),
+          panel.grid.minor.x = element_blank(),
+          panel.background = element_blank()
+        )
+rt_plot
+```
+
+## 
+
+### Excess Deaths (South Africa)
+
+```{r Excess Deaths (South Africa), echo=FALSE}
+excess_deaths_all_filtered <- excess_deaths_all %>% 
+  rename(week = X, RSA = X.17) %>% 
+  select(week, RSA) %>% 
+  mutate(RSA = (gsub("RSA", "", RSA))) %>% 
+  mutate(RSA = as.integer(gsub(" ", "", RSA))) %>% 
+  drop_na() %>% 
+  filter(week != "Total")
+
+may3_june19_excess <- excess_deaths_all_filtered %>%
+  mutate(Total = sum(excess_deaths_all_filtered$RSA)) %>% 
+  mutate(date = "19-06-2021") %>%
+  mutate(date = as.Date(date, format = "%d-%m-%Y"))
+may3_june12_excess <- excess_deaths_all_filtered %>%  
+  filter(week != "13-Jun-21") %>%
+  mutate(Total = sum(excess_deaths_all_filtered$RSA)) %>% 
+  mutate(date = "12-06-2021") %>%
+  mutate(date = as.Date(date, format = "%d-%m-%Y"))
+may3_june05_excess <- excess_deaths_all_filtered %>% 
+  filter(week != "13-Jun-21", week != "06-Jun-21") %>% 
+  mutate(Total = sum(excess_deaths_all_filtered$RSA)) %>% 
+  mutate(date = "05-06-2021") %>%
+  mutate(date = as.Date(date, format = "%d-%m-%Y"))
+ 
+ 
+covid_data_provincial_deaths_filtered <- covid_data_provincial_deaths %>%
+  select(c(date, total)) %>% 
+  rename(reported_deaths = total)
+ 
+may3_june19_reported <- covid_data_provincial_deaths_filtered %>% 
+  filter(date == "19-06-2021") %>%
+  mutate(date = as.Date(date, format = "%d-%m-%Y"))
+may3_june12_reported <- covid_data_provincial_deaths_filtered %>% 
+  filter(date == "12-06-2021") %>%
+  mutate(date = as.Date(date, format = "%d-%m-%Y"))
+may3_june05_reported <- covid_data_provincial_deaths_filtered %>% 
+  filter(date == "05-06-2021") %>%
+  mutate(date = as.Date(date, format = "%d-%m-%Y"))
+ 
+ 
+#join the two data sets
+SA_covid_deaths_19june <- inner_join(may3_june19_excess, may3_june19_reported) %>% 
+  mutate(excess_total = Total - reported_deaths, row = row_number()) %>% 
+  filter(row == 1) %>% 
+  select(row, date, Total, reported_deaths, excess_total)
+SA_covid_deaths_12june <- inner_join(may3_june12_excess, may3_june12_reported) %>% 
+  mutate(excess_total = Total - reported_deaths, row = row_number()) %>%
+  filter(row == 1) %>% 
+  select(row, date, Total, reported_deaths, excess_total)
+SA_covid_deaths_05june <- inner_join(may3_june05_excess, may3_june05_reported) %>% 
+  mutate(excess_total = Total - reported_deaths, row = row_number()) %>% 
+  filter(row == 1) %>% 
+  select(row, date, Total, reported_deaths, excess_total)
+
+SA_covid_deaths_05june_12june <- inner_join(SA_covid_deaths_05june, SA_covid_deaths_12june, by = c("row"))
+ 
+SA_covid_deaths_05june_19june <- inner_join(SA_covid_deaths_05june_12june, SA_covid_deaths_19june, by = c("row")) %>%
+  pivot_longer(cols = c(reported_deaths, Total, reported_deaths.x, Total.x, reported_deaths.y, Total.y) , names_to = "death_label", values_to = "deaths") %>%
+  select(-row, -excess_total, -excess_total.x, -excess_total.y) %>% 
+  rename(may3_june19 = date, may3_june12 = date.y, may3_june5 = date.x) %>% 
+  mutate(may3_june19 = as.character(may3_june19),may3_june19 = (gsub("2021-06-19", "3 May - 19 June", may3_june19))) %>% 
+  mutate(may3_june12 = as.character(may3_june12),may3_june12 = (gsub("2021-06-12", "3 May - 12 June", may3_june12))) %>% 
+  mutate(may3_june5 = as.character(may3_june5),may3_june5 = (gsub("2021-06-05", "3 May - 5 June", may3_june5))) %>%
+  pivot_longer(cols = c(may3_june5, may3_june12, may3_june19), names_to = "date", values_to = "week") %>% 
+  mutate(row = row_number()) %>% 
+  mutate(death_label = (gsub("reported_deaths.x", "reported_deaths", death_label)), death_label = (gsub("reported_deaths.y", "reported_deaths", death_label)), death_label = (gsub("Total.x", "Total", death_label)), death_label = (gsub("Total.y", "Total", death_label))) %>% 
+  filter(row != "1", row != "2", row != "4", row != "5", row != "8", row != "9", row != "11", row != "12", row != "13", row != "15", row != "16", row != "18") %>% 
+  select(-row) 
+ 
+SA_covid_deaths_05june_19june <- SA_covid_deaths_05june_19june %>% 
+  pivot_wider(id_cols = week, names_from = death_label, values_from = deaths) %>% 
+  mutate(Total = Total - reported_deaths) %>% 
+  pivot_longer(cols = c(Total, reported_deaths), names_to = "death_label", values_to = "deaths")
+ 
+  
+ 
+
+exc_deaths_ZA_plot <- ggplot(SA_covid_deaths_05june_19june, aes(x= reorder(week, deaths), y = deaths, fill= death_label)) +
+geom_col(position = position_stack(reverse = TRUE))+
+   geom_text(label = SA_covid_deaths_05june_19june$deaths, vjust = 0, size = 3, colour="white") + 
+  labs(
+        title = "Data for week ending 2021-06-19",
+        subtitle = "",
+        caption = paste(sep = " ", "Updated:", updated_date),
+        tag = ""
+      ) +
+      scale_y_continuous(limits = c(0,200000),labels = scales::comma, expand = c(0, 0), breaks = c(0, 100000, 200000)) +
+      scale_fill_manual(values = c("#E63946", "#457B9D")) +
+      theme(
+        axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        axis.ticks = element_blank(),
+        axis.text = element_text(colour="white"),
+  
+        plot.title = element_text(colour="white", size=14, face="bold", margin = margin(0, 0, 10, 0), hjust = 0),
+        plot.caption = element_text(colour="white", face="bold", hjust = 0),
+        plot.background = element_rect(fill = "#14243E"),
+        
+        legend.justification=c(0,0),
+        legend.position=c(0,-1),
+        legend.background = element_blank(),
+        legend.text = element_blank(),
+        legend.key = element_blank(),
+        legend.title = element_blank(),
+        
+        panel.grid.major.y = element_line(linetype = "dotted", colour = "white"),
+        panel.grid.minor.y = element_blank(),
+        panel.grid.major.x = element_blank(),
+        panel.grid.minor.x = element_blank(),
+        panel.background = element_blank()
+      )
+exc_deaths_ZA_plot
+```
+
+### Excess Deaths (Provinces)
+
+```{r Excess Deaths (Provinces), echo=FALSE}
+est_deaths_prov <- read.csv2("data_in/estimated_deaths_provinces.csv", skip=1) 
+colnames(est_deaths_prov)[1] <- "week"
+colnames(est_deaths_prov)[2] <- "date"
+
+est_deaths_prov_filtered <- est_deaths_prov %>%
+  filter(week == "3 May 2020 - 19 Jun 2021") %>%
+  select(-SOUTH.AFRICA, -week) %>%
+  pivot_longer(est_deaths_prov, cols = !date, names_to = "provinces", values_to = "excess_total") %>%
+  mutate(provinces = str_replace(provinces, "NORTHERN.CAPE", "NC")) %>%
+  mutate(provinces = str_replace(provinces, "EASTERN.CAPE", "EC")) %>%
+  mutate(provinces = str_replace(provinces, "WESTERN.CAPE", "WC")) %>%
+  mutate(provinces = str_replace(provinces, "NORTH.WEST", "NW")) %>%
+  mutate(provinces = str_replace(provinces, "LIMPOPO", "LP")) %>%
+  mutate(provinces = str_replace(provinces, "MPUMALANGA", "MP")) %>%
+  mutate(provinces = str_replace(provinces, "KWAZULU.NATAL", "KZN")) %>%
+  mutate(provinces = str_replace(provinces, "GAUTENG", "GP")) %>%
+  mutate(provinces = str_replace(provinces, "FREE.STATE", "FS")) %>%
+  mutate(date = "19-06-2021") %>%
+  mutate(date = as.Date(date, format = "%d-%m-%Y"))
+
+covid_data_provincial_deaths_filtered <- covid_data_provincial_deaths %>%
+select(c(date, EC, FS, GP, WC, KZN, LP, MP, NW, NC)) %>%
+filter(date == "19-06-2021") %>%
+mutate(date = as.Date(date, format = "%d-%m-%Y"))
+
+covid_data_provincial_deaths_filtered <- pivot_longer(covid_data_provincial_deaths_filtered, cols = !date, names_to = "provinces", values_to = "reported_total") %>%
+mutate(reported_total = as.double(reported_total))
+
+#join the two data sets
+total_covid_deaths <- inner_join(est_deaths_prov_filtered, covid_data_provincial_deaths_filtered) %>%
+mutate(excess_total = excess_total - reported_total) %>%
+pivot_longer(cols = c(reported_total, excess_total) , names_to = "death_label", values_to = "deaths") %>%
+arrange(death_label, deaths)
+
+exc_deaths_prov_plot <- ggplot(total_covid_deaths, aes(reorder(provinces, -deaths), deaths, fill= death_label)) +
+    geom_col() +
+    geom_text(label = total_covid_deaths$deaths, vjust = 0, size = 3, colour="white") + 
+    labs(
+        title = "Data for week ending 2021-06-19",
+        subtitle = "",
+        caption = paste(sep = " ", "Updated:", updated_date),
+        tag = ""
+      ) +
+      scale_y_continuous(labels = scales::comma, expand = c(0, 0), breaks = c(0, 20000, 40000)) +
+      scale_fill_manual(values = c("#457B9D", "#E63946")) +
+      theme(
+        axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        axis.ticks = element_blank(),
+        axis.text = element_text(colour="white"),
+  
+        plot.title = element_text(colour="white", size=14, face="bold", margin = margin(0, 0, 10, 0), hjust = 0),
+        plot.caption = element_text(colour="white", face="bold", hjust = 0),
+        plot.background = element_rect(fill = "#14243E"),
+        
+        legend.justification=c(0,0),
+        legend.position=c(0,-1),
+        legend.background = element_blank(),
+        legend.text = element_blank(),
+        legend.key = element_blank(),
+        legend.title = element_blank(),
+        
+        panel.grid.major.y = element_line(linetype = "dotted", colour = "white"),
+        panel.grid.minor.y = element_blank(),
+        panel.grid.major.x = element_blank(),
+        panel.grid.minor.x = element_blank(),
+        panel.background = element_blank()
+      )
+
+exc_deaths_prov_plot
+```
+
+### Excess Deaths (Metros)
+```{r Excess Deaths (Metros), echo=FALSE}
+excess_deaths_all[is.na(excess_deaths_all)] <- 0
+excess_deaths_all_metro <- excess_deaths_all %>%
+rename(week = X, BC = X.9, CT = X.10, EKH = X.11, ETH = X.12, JHB = X.13, MN = X.14, NMB = X.15, TSH = X.16) %>%
+select(week, BC, CT, EKH, ETH, JHB, MN, NMB, TSH) %>%
+filter(week == "Total") %>%
+mutate(BC = as.integer(gsub(" ", "", BC))) %>%
+mutate(CT = as.integer(gsub(" ", "", CT))) %>%
+mutate(EKH = as.integer(gsub(" ", "", EKH))) %>%
+mutate(ETH = as.integer(gsub(" ", "", ETH))) %>%
+mutate(JHB = as.integer(gsub(" ", "", JHB))) %>%
+mutate(MN = as.integer(gsub(" ", "", MN))) %>%
+mutate(NMB = as.integer(gsub(" ", "", NMB))) %>%
+mutate(TSH = as.integer(gsub(" ", "", TSH))) %>%
+pivot_longer(cols = !week, names_to = "metros", values_to = "excess_total")
+
+
+
+exc_deaths_metro_plot <- ggplot(excess_deaths_all_metro, aes(x= reorder(metros, -excess_total), y=excess_total)) +
+geom_col(fill = "#457B9D")+
+  geom_text(label = excess_deaths_all_metro$excess_total, vjust = 0, size = 3, colour="white") + 
+  labs(
+        title = "Data for week ending 2021-06-19",
+        subtitle = "",
+        caption = paste(sep = " ", "Updated:", updated_date),
+        tag = ""
+      ) +
+      scale_y_continuous(limits = c(0, 15000),labels = scales::comma, expand = c(0, 0), breaks = c(0, 5000, 10000, 15000)) +
+      theme(
+        axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        axis.ticks = element_blank(),
+        axis.text = element_text(colour="white"),
+  
+        plot.title = element_text(colour="white", size=14, face="bold", margin = margin(0, 0, 10, 0), hjust = 0),
+        plot.caption = element_text(colour="white", face="bold", hjust = 0),
+        plot.background = element_rect(fill = "#14243E"),
+        
+        legend.justification=c(0,0),
+        legend.position=c(0,-1),
+        legend.background = element_blank(),
+        legend.text = element_blank(),
+        legend.key = element_blank(),
+        legend.title = element_blank(),
+        
+        panel.grid.major.y = element_line(linetype = "dotted", colour = "white"),
+        panel.grid.minor.y = element_blank(),
+        panel.grid.major.x = element_blank(),
+        panel.grid.minor.x = element_blank(),
+        panel.background = element_blank()
+      )
+
+exc_deaths_metro_plot
+```
+
+## 
+
+### New daily confirmed Covid-19 cases: 7-day average
+
+```{r New daily confirmed Covid-19 cases 7-day average, echo=FALSE, fig.width=15}
+continents_data_filtered <- continents_data %>%
+  mutate(Date = as.Date(Date, format = "%Y-%m-%d")) %>% 
+  select(-Deaths) %>% 
+  pivot_wider(id_cols = Date, names_from = Geography, values_from = Cases) 
+
+continents_data_filtered <- continents_data_filtered %>% 
+  mutate(World = rowSums(continents_data_filtered[,-1])) %>% 
+  pivot_longer(cols = -Date, names_to = "Geography", values_to = "Cases") %>% 
+  arrange(Geography)
+  
+
+
+confirmed_7_day_avg_plot <- ggplot(data = continents_data_filtered, mapping = aes(x = Date, y = rollmean(Cases, k = 7, na.pad = TRUE)))+
+  geom_line(mapping = aes(colour = Geography), na.rm = TRUE, lwd = 1.25) +
+  scale_x_date(breaks = "4 months", date_labels = "%m") +
+  scale_y_continuous(limits = c(0,1000000), labels = scales::comma, expand = c(0, 0), breaks = c(0,200000,400000,600000,800000)) +
+  labs(
+        title = "New daily confirmed Covid-19 cases: 7-day average",
+        subtitle = "",
+        caption = paste(sep = " ", "Updated:", updated_date),
+        tag = ""
+      ) +
+      theme(
+        axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        axis.text.x = element_text(colour="white"),
+        axis.text.y = element_text(colour="white"),
+        axis.ticks.y =  element_blank(),
+        
+        legend.justification=c(0,0),
+        legend.position=c(0.05, 0.6),
+        legend.background = element_blank(),
+        legend.text = element_text(colour = "white", face = "bold"),
+        legend.key = element_blank(),
+        legend.title = element_blank(),
+    
+        plot.title = element_text(colour="white", size=14, face="bold", margin = margin(0, 0, 10, 0), hjust = 0),
+        plot.caption = element_text(colour="white", face="bold", hjust = 0),
+        plot.background = element_rect(fill = "#14243E"),
+    
+        panel.grid.major.y = element_line(colour = "white", linetype = "dotted"),
+        panel.grid.minor.y = element_blank(),
+        panel.grid.major.x = element_blank(),
+        panel.grid.minor.x = element_blank(),
+        panel.background = element_blank()
+      )
+confirmed_7_day_avg_plot
+```
+
+
+
+
+# Code & Notes 
+
+### Setup
+
+```{r eval=FALSE, echo=TRUE}
+library(tidyverse)
+library(ggplot2)
+library(dplyr)
+#ggrepel used to add total labels at the end of graphs
+library(ggrepel)
+library(ggpmisc)
+library(zoo)
+library(gridExtra)
+##gt used to create table
+library(gt)
+library(flexdashboard)
+
+#Uses current date for "Updated: `date`" caption on each graph. This is for demonstration, the data has not been updated for the marking date. 
+updated_date <- format(Sys.Date(), "%d %b %Y")
+
+```
+
+### Importing data
+***
+#### Our data was downloaded from these sources:
+ - [Our World in Data](https://ourworldindata.org/)
+ - [South African Department of Health](http://www.health.gov.za/)
+ - [National Institute for Communicable Diseases](https://www.nicd.ac.za/)
+ - [covid19za GitHub](https://github.com/dsfsi/covid19za)
+ 
+Other data was requested via email from https://mediahack.co.za/datastories/coronavirus/dashboard/
+
+##### Code blocks include comments to explain specific chunks of code that are not obvious at a glance. drop_na() is used when we could not find any database to fill gaps. Infering Covid-19 data seemed misleading.
+##### Most csv's had to have their date column mutated to a date object. Data was wrangled within the first graph code chunk for the graph that needed it. Graphs that used the same data-set had their data wrangled in mentioned first graph code chunk as well. 
+
+```{r eval=FALSE, echo=TRUE}
+#Filter South Africa from world data
+covid_data <- read.csv("data_in/owid_covid_data.csv") %>% 
+  filter(iso_code=="ZAF") %>% 
+  mutate(date = as.Date(date, format = "%Y-%m-%d"))
+
+#Make date column usable and total provinces
+cum_daily_cases_province <- read.csv("data_in/cum_cases_by_province.csv") %>%
+  rename("date" = ï..Specimen.received.date) %>% 
+  mutate(date = as.Date(date, format = "%Y-%m-%d"))
+cum_daily_cases_province[is.na(cum_daily_cases_province)] <- 0
+cum_daily_cases_province<-cum_daily_cases_province %>% 
+  mutate(total = rowSums(cum_daily_cases_province[,-1]))
+
+#Change cumulative cases to daily cases
+daily_cases_province <- cum_daily_cases_province %>%
+  transmute(date = as.Date(date, format = "%Y-%m-%d"),
+         Western_Cape_daily = c(Western.Cape[1], diff(Western.Cape)),
+         Northern_Cape_daily = c(Northern.Cape[1], diff(Northern.Cape)),
+         Eastern_Cape_daily = c(Eastern.Cape[1], diff(Eastern.Cape)),
+         Free_State_daily = c(Free.State[1], diff(Free.State)),
+         Gauteng_daily = c(Gauteng[1], diff(Gauteng)),
+         Kwazulu_Natal_daily = c(Kwazulu.Natal[1], diff(Kwazulu.Natal)),
+         Limpopo_daily = c(Limpopo[1], diff(Limpopo)),
+         Mpumalanga_daily = c(Mpumalanga[1], diff(Mpumalanga)),
+         North_West_daily = c(North.West[1], diff(North.West)))
+
+provinces <- read.csv("data_in/provinces_csv.csv") %>% 
+  mutate(date = as.Date(date, format = "%Y-%m-%d")) 
+
+covid_data_cumulative <- read.csv("data_in/Cumulative.csv") %>% 
+  mutate(date = as.Date(date, format = "%Y-%m-%d"))
+
+continents_data <- read.csv("data_in/continents_daily.csv")
+rt_data <- read.csv("data_in/calculated_rt_sa_provincial_cumulative.csv")
+covid_data_provinces <- read.csv("data_in/Provinces.csv")
+covid_data_vaccinations <- read.csv("data_in/Vaccinations.csv")
+covid_data_provincial_deaths <- read.csv("data_in/covid19za_provincial_cumulative_timeline_deaths.csv")  
+epi_week = read.csv("data_in/epi week hospitals.csv")
+rt_estimates = read.csv("data_in/national_plus_provincial_rts (20).csv")
+excess_deaths_all = read.csv2("data_in/excess_death_all.csv")
+```
+
+##### A custom theme was used for all ggplots. All scales were made to fit the example site. Factor is used to override ggplots auto reorder.
+
+Row {data-height=700}
+-------------------------------------
+### 1. Daily Vaccination
+
+```{r echo=FALSE}
+daily_vaccinations_plot
+```
+
+### 1. Code & Notes
+
+```{r eval=FALSE, echo=TRUE}
+daily_vac_data <- covid_data %>% 
+  select(date, new_vaccinations) %>%
+  drop_na()
+
+daily_vaccinations_plot <- ggplot(daily_vac_data) +
+  geom_col(mapping = aes(date, new_vaccinations), fill="#418D3F", width = 0.5) +
+  labs(
+    title = "Daily Vaccinations",
+    subtitle = "",
+    caption = paste(sep = " ", "Updated:", updated_date),
+    tag = ""
+  ) +
+  scale_y_continuous(labels = scales::comma, expand = c(0, 0), breaks = c(0,50000)) +
+  scale_x_date(date_breaks = "1 month", date_labels = "%d %b", expand = c(0, 0)) +
+  theme(
+    axis.title.x = element_blank(),
+    axis.title.y = element_blank(),
+    axis.ticks = element_blank(),
+    axis.text = element_text(colour="white"),
+    
+    plot.title = element_text(colour="white", size=14, face="bold", margin = margin(0, 0, 10, 0), hjust = -0.05),
+    plot.caption = element_text(colour="white", face="bold", hjust = -0.05),
+    plot.background = element_rect(fill = "#14243E"),
+    
+    panel.grid.major.y = element_line(colour = "white", linetype = "dotted"),
+    panel.grid.minor.y = element_blank(),
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor.x = element_blank(),
+    panel.background = element_blank()
+  )
+daily_vaccinations_plot
+```
+
+Row {data-height=850}
+-------------------------------------
+### 2. Total Vaccinations
+
+```{r echo=FALSE}
+total_vac_plot
+```
+
+### 2. Code & Notes
+
+```{r eval=FALSE, echo=TRUE}
+total_vac_plot <- ggplot(covid_data %>% 
+  select(date, total_vaccinations) %>% 
+  drop_na(), aes(date, total_vaccinations)) +
+  geom_line(lwd=1.75, colour="#418D3F") +
+  labs(
+    title = "Total Vaccinations",
+    subtitle = "",
+    caption = paste(sep = " ", "Updated:", updated_date),
+    tag = ""
+  ) +
+  scale_y_continuous(labels = scales::comma, expand = c(0, 0)) +
+  scale_x_date(date_breaks = "1 month", date_labels = "%d-%m", expand = c(0, 0)) +
+  theme(
+    axis.title.x = element_blank(),
+    axis.title.y = element_blank(),
+    axis.ticks = element_blank(),
+    axis.text = element_text(colour="white"),
+    
+    plot.title = element_text(colour="white", size=14, face="bold", margin = margin(0, 0, 10, 0), hjust = -0.1),
+    plot.caption = element_text(colour="white", face="bold", hjust = -0.1),
+    plot.background = element_rect(fill = "#14243E"),
+    
+    panel.grid.major.y = element_line(colour = "white", linetype = "dotted"),
+    panel.grid.minor.y = element_blank(),
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor.x = element_blank(),
+    panel.background = element_blank()
+  )
+
+data_ends <- covid_data %>% filter(date == "2021-06-19")
+total_vac_plot <- total_vac_plot + 
+  geom_text_repel(
+    aes(label = total_vaccinations), data = data_ends,
+    fontface ="plain", color = "white", size = 4
+    )
+total_vac_plot
+```
+
+
+Row {data-height=850}
+-------------------------------------
+
+### 3. Daily confirmed cases
+
+```{r}
+daily_confirmed_plot
+```
+
+### 3. Code & Notes
+
+```{r eval=FALSE, echo=TRUE}
+daily_confirmed_data <- covid_data %>% 
+  select(date, new_cases) %>%
+  drop_na()
+
+daily_confirmed_plot <- ggplot(daily_confirmed_data) +
+  geom_col(mapping = aes(date, new_cases), fill="#457B9D", width = 0.5) +
+  geom_line(mapping = aes(date, rollmean(new_cases, k = 7,na.pad=TRUE)), lwd=1.75 ,colour="#E63946", na.rm = TRUE) +
+  labs(
+    title = "Daily confirmed cases",
+    subtitle = "This chart shows the daily confirmed casese since March 2020. The levels refer to the lockdown levels. Red line is the 7-day rolling average",
+    caption = paste(sep = " ", "Updated:", updated_date),
+    tag = ""
+  ) +
+  scale_y_continuous(labels = scales::comma, expand = c(0, 0), breaks = c(0,10000,20000)) +
+  scale_x_date(date_breaks = "1 month", date_labels = "%d %b", expand = c(0, 0)) +
+  theme(
+    axis.title.x = element_blank(),
+    axis.title.y = element_blank(),
+    axis.ticks = element_blank(),
+    axis.text = element_text(colour="white"),
+    
+    plot.title = element_text(colour="white", size=14, face="bold", margin = margin(0, 0, 10, 0), hjust = 0),
+    plot.caption = element_text(colour="white", face="bold", hjust = 0),
+    plot.subtitle  = element_text(colour="white", face="bold", hjust = 0),
+    plot.background = element_rect(fill = "#14243E"),
+    
+    panel.grid.major.y = element_line(colour = "white", linetype = "dotted"),
+    panel.grid.minor.y = element_blank(),
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor.x = element_blank(),
+    panel.background = element_blank()
+  )
+
+daily_confirmed_plot
+```
+
+Row {data-height=700}
+-------------------------------------
+### 4. Active case total by day
+
+```{r echo=FALSE}
+active_cases_total_plot
+```
+
+
+### 4. Code & Notes
+
+```{r eval=FALSE, echo=TRUE}
+active_cases_total_plot <- ggplot(provinces, aes(date, active_cases)) +
+  geom_col(fill = "#457B9D") +
+  labs(
+      title = "Active case total by day",
+      subtitle = "",
+      caption = paste(sep = " ", "Updated:", updated_date),
+      tag = ""
+    ) +
+    scale_y_continuous(labels = scales::comma, expand = c(0, 0), breaks = c(0, 100000, 200000)) +
+   scale_x_date(date_breaks = "1 month", date_labels = "%d %b", expand = c(0, 0)) +
+    theme(
+      axis.title.x = element_blank(),
+      axis.title.y = element_blank(),
+      axis.ticks = element_blank(),
+      axis.text = element_text(colour="white"),
+      
+      plot.title = element_text(colour="white", size=14, face="bold", margin = margin(0, 0, 10, 0), hjust = 0),
+      plot.caption = element_text(colour="white", face="bold", hjust = 0),
+      plot.background = element_rect(fill = "#14243E"),
+      
+      panel.grid.major.y = element_line(colour = "white", linetype = "dotted"),
+      panel.grid.minor.y = element_blank(),
+      panel.grid.major.x = element_blank(),
+      panel.grid.minor.x = element_blank(),
+      panel.background = element_blank()
+    )
+active_cases_total_plot
+```
+
+Row {data-height=700}
+-------------------------------------
+### 5. Daily deaths
+
+```{r echo=FALSE}
+daily_deaths_plot
+```
+
+### 5. Code & Notes
+
+```{r eval=FALSE, echo=TRUE}
+daily_deaths_plot <- ggplot(daily_death_data <- covid_data %>% select(date, new_deaths) %>% drop_na()) +
+  geom_col(mapping = aes(date, new_deaths), fill="#457B9D", width = 0.5) +
+  labs(
+    title = "Daily deaths",
+    subtitle = "",
+    caption = paste(sep = " ", "Updated:", updated_date),
+    tag = ""
+  ) +
+  scale_y_continuous(labels = scales::comma, expand = c(0, 0)) +
+  scale_x_date(date_breaks = "1 month", date_labels = "%d %b", expand = c(0, 0)) +
+  theme(
+    axis.title.x = element_blank(),
+    axis.title.y = element_blank(),
+    axis.ticks = element_blank(),
+    axis.text = element_text(colour="white"),
+    
+    plot.title = element_text(colour="white", size=14, face="bold", margin = margin(0, 0, 10, 0), hjust = 0),
+    plot.caption = element_text(colour="white", face="bold", hjust = 0),
+    plot.background = element_rect(fill = "#14243E"),
+    
+    panel.grid.major.y = element_line(colour = "white", linetype = "dotted"),
+    panel.grid.minor.y = element_blank(),
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor.x = element_blank(),
+    panel.background = element_blank()
+  )
+
+daily_deaths_plot
+```
+
+Row {data-height=750}
+-------------------------------------
+### 6. Daily cases trends
+
+```{r echo=FALSE}
+daily_trends_plot
+```
+
+### 6. Code & Notes
+
+```{r eval=FALSE, echo=TRUE}
+long_daily_cases_province <- pivot_longer(daily_cases_province[which(daily_cases_province$date > "2020-11-10"),], cols = -date, names_to = "province", values_to = "daily_cases") %>% 
+  arrange(desc(province))
+  
+
+daily_trends_plot <- ggplot(long_daily_cases_province, aes(date,  rollmean(daily_cases, k = 7, na.pad=TRUE))) +
+  geom_line(colour = "#E63946", lwd=1.75) +
+  facet_wrap(vars(long_daily_cases_province$province),nrow = 2, ncol = 5) +
+  labs(
+    title = "Daily case trends",
+    subtitle = subtitle = "These charts show the seven-day average of daily new cases for the past eight months. The seven-day average is used to even out spikes in daily cases.",
+    caption = paste(sep = " ", "Updated:", updated_date),
+    tag = ""
+  ) +
+  scale_x_date(date_breaks = "7 month", date_labels = "%d %b", expand = c(0, 0)) +
+  theme(
+    axis.title.x = element_blank(),
+    axis.title.y = element_blank(),
+    axis.text.y = element_blank(),
+    axis.ticks = element_blank(),
+    axis.text = element_text(colour="white"),
+    
+    plot.title = element_text(colour="white", size=14, face="bold", margin = margin(0, 0, 10, 0), hjust = 0),
+    plot.subtitle = element_text(colour= "white"),
+    plot.caption = element_text(colour="white", face="bold", hjust = 0),
+    plot.background = element_rect(fill = "#14243E"),
+    
+    panel.grid.major.y = element_blank(),
+    panel.grid.minor.y = element_blank(),
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor.x = element_blank(),
+    panel.background = element_blank()
+  )
+
+daily_trends_plot
+```
+
+Row {data-height=850}
+-------------------------------------
+
+### 7. Cases vs Active Cases
+
+```{r echo=FALSE}
+cases_vs_active_plot
+```
+
+### 7. Code & Notes
+
+```{r eval=FALSE, echo=TRUE}
+cases_vs_active_plot <- ggplot() +
+  geom_line(provinces %>% group_by(date) %>% summarise(max = sum(cumulative_cases)), mapping = aes(date, max, colour="Confirmed cases"), na.rm = TRUE , lwd=1.5) +
+  geom_line(provinces%>% group_by(date) %>% summarise(max = sum(active_cases)), mapping = aes(date, max, colour="Active cases") , lwd=1.5) +
+  labs(
+      title = "Cases vs Active Cases",
+      subtitle = "",
+      caption = paste(sep = " ", "Updated:", updated_date),
+      tag = ""
+    ) +
+    scale_y_continuous(limits = c(0,2000000), labels = scales::comma, expand = c(0, 0)) +
+    scale_x_date(date_breaks = "3 month", date_labels = "%d/%m", expand = c(0, 0)) +
+    scale_colour_manual(values = c("#457B9D", "#E63946")) +
+    theme(
+      axis.title.x = element_blank(),
+      axis.title.y = element_blank(),
+      axis.ticks = element_blank(),
+      axis.text = element_text(colour="white"),
+      
+      legend.justification=c(0,0),
+      legend.position=c(0,0.8),
+      legend.background = element_blank(),
+      legend.text = element_text(colour = "white"),
+      legend.key = element_blank(),
+      legend.title = element_blank(),
+      
+      plot.title = element_text(colour="white", size=14, face="bold", margin = margin(0, 0, 10, 0), hjust = 0),
+      plot.caption = element_text(colour="white", face="bold", hjust = 0),
+      plot.background = element_rect(fill = "#14243E"),
+      
+      panel.grid.major.y = element_line(colour = "white", linetype = "dotted"),
+      panel.grid.minor.y = element_blank(),
+      panel.grid.major.x = element_blank(),
+      panel.grid.minor.x = element_blank(),
+      panel.background = element_blank()
+    )
+data_ends <- covid_data %>% filter(date == "2021-06-19")
+cases_vs_active_plot <- cases_vs_active_plot + 
+  geom_text_repel(
+    aes(label = max), data = data_ends,
+    fontface ="plain", color = "white", size = 4
+    )
+total_vac_plot
+```
+
+Row {data-height=1000}
+-------------------------------------
+### 8. Total Deaths
+
+```{r echo=FALSE}
+total_deaths_plot
+```
+
+### 8. Code & Notes
+
+```{r eval=FALSE, echo=TRUE}
+total_deaths_plot <- ggplot() +
+  geom_line(covid_data %>% select(date, total_deaths) %>% drop_na(), mapping = aes(date, total_deaths, colour="Total Deaths"), lwd=1.5, na.rm = TRUE)  + 
+  geom_line(covid_data %>% group_by(date) %>% summarise(CFR = (total_deaths/total_cases)*1000000), mapping = aes(date, CFR, colour="Case Fatality Rate (CFR%)"),lwd=1.5, na.rm = TRUE) +
+  labs(
+    title = "Total Deaths",
+    subtitle = "",
+    caption = paste(sep = " ", "Updated:", updated_date),
+    tag = ""
+  ) +
+  scale_y_continuous(limits = c(0, 80000), labels = scales::comma, expand = c(0, 0), breaks = c(0, 20000,40000,60000,80000), sec.axis = sec_axis(~ . /10000,  name = "")) +
+  scale_x_date(date_breaks = "3 month", date_labels = "%d/%m", expand = c(0, 0)) +
+  scale_colour_manual(values = c("#BC2424", "#457B9D")) +
+  theme(
+    axis.title.x = element_blank(),
+    axis.title.y = element_blank(),
+    axis.ticks = element_blank(),
+    axis.text = element_text(colour="white"),
+    
+    plot.title = element_text(colour="white", size=14, face="bold", margin = margin(0, 0, 10, 0), hjust = 0),
+    plot.caption = element_text(colour="white", face="bold", hjust = 0),
+    plot.background = element_rect(fill = "#14243E"),
+    
+    legend.justification=c(0,0),
+    legend.position=c(0,0.8),
+    legend.background = element_blank(),
+    legend.text = element_text(colour = "white"),
+    legend.key = element_blank(),
+    legend.title = element_blank(),
+  
+    panel.grid.major.y = element_line(colour = "white", linetype = "dotted"),
+    panel.grid.minor.y = element_blank(),
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor.x = element_blank(),
+    panel.background = element_blank()
+  )
+
+
+data_ends <- covid_data %>% filter(date == "2021-06-20")
+total_deaths_plot <- total_deaths_plot + 
+  geom_text_repel(
+    aes(date, total_deaths, label = total_deaths), data = data_ends,
+    fontface ="bold", color = "white", size = 4
+    )
+total_deaths_plot
+```
+
+Row {data-height=750}
+-------------------------------------
+### 9. Doubling Rates
+
+```{r echo=FALSE}
+doubling_rate_plot
+```
+
+### 9. Code & Notes
+Using [Doubling Time and its Interpretation for COVID 19 Cases](http://njcmindia.org/uploads/11-3_141-143.pdf), we came close to the shape, but could not get the right values.
+```{r eval=FALSE, echo=TRUE}
+dbl_rate_data <- covid_data %>%
+  filter(date >= "2020-10-01", date <="2021-06-20") %>% 
+  select(date, total_cases, total_deaths) %>%
+  drop_na()
+
+dbl_rate_data <- dbl_rate_data %>% 
+  mutate(c_doubling_rate =  2* abs(log(2)/log(lag(as.numeric(dbl_rate_data$total_cases), n = 7)/dbl_rate_data$total_cases))) %>% 
+  mutate(d_doubling_rate =  2*abs(log(2)/log(lag(as.numeric(dbl_rate_data$total_deaths), n = 7)/dbl_rate_data$total_deaths)))
+
+
+#abs(lag(as.numeric(rownames(dbl_rate_data)), n = 7) - as.numeric(rownames(dbl_rate_data)))
+
+doubling_rate_plot <- ggplot() +
+  geom_line(dbl_rate_data, mapping = aes(date, rollmean(c_doubling_rate, k = 30, na.pad = TRUE), colour="Confirmed Cases"), na.rm = TRUE, lwd = 1.5) +
+  geom_line(dbl_rate_data, mapping = aes(date, rollmean(d_doubling_rate, k = 30, na.pad = TRUE), colour="Deaths"), na.rm = TRUE, lwd = 1.5) +
+  labs(
+      title = "Doubling Rates",
+      subtitle = "",
+      caption = paste(sep = " ", "Updated:", updated_date),
+      tag = ""
+    ) +
+    scale_y_log10(labels = scales::comma, expand = c(0, 0)) +
+    scale_x_date(date_breaks = "3 month", date_labels = "%d/%m", expand = c(0, 0)) +
+    scale_colour_manual(name="", values=c("#457B9D", "#BC2424")) +
+    theme(
+      axis.title.x = element_blank(),
+      axis.title.y = element_blank(),
+      axis.ticks = element_blank(),
+      axis.text = element_text(colour="white"),
+
+      legend.justification=c(0,0),
+      legend.position=c(0,0.8),
+      legend.background = element_blank(),
+      legend.text = element_text(colour = "white"),
+      legend.key = element_blank(),
+
+      plot.title = element_text(colour="white", size=14, face="bold", margin = margin(0, 0, 10, 0), hjust = 0),
+      plot.caption = element_text(colour="white", face="bold", hjust = 0),
+      plot.background = element_rect(fill = "#14243E"),
+
+      panel.grid.major.y = element_line(colour = "white", linetype = "dotted"),
+      panel.grid.minor.y = element_blank(),
+      panel.grid.major.x = element_blank(),
+      panel.grid.minor.x = element_blank(),
+      panel.background = element_blank()
+    )
+doubling_rate_plot
+
+```
+
+Row {data-height=850}
+-------------------------------------
+### 10. Deaths by Province
+
+```{r echo=FALSE}
+deaths_province_plot
+```
+
+### 10. Code & Notes
+
+```{r eval=FALSE, echo=TRUE}
+#Max deaths and per 100k are used for the next 2 graphs
+deaths_by_province <- provinces %>% 
+  select(province_id, deaths_per_100k, cumulative_deaths) %>% 
+  group_by(province_id) %>% 
+  summarise(max_deaths = max(cumulative_deaths), max_100k = max(deaths_per_100k)) %>% 
+  arrange(desc(max_deaths)) %>% 
+  mutate(province_id = factor(province_id, levels = province_id))
+
+deaths_province_plot <- ggplot(deaths_by_province, mapping = aes(province_id, max_deaths)) +
+  geom_bar(stat="identity", fill = "#E63946") +
+  geom_text(mapping = aes(label = max_deaths), nudge_y = 800,colour ="white") +
+  labs(
+      title = "Death by Province",
+      subtitle = "",
+      caption = paste(sep = " ", "Updated:", updated_date),
+      tag = ""
+    ) +
+    scale_y_continuous(limits=c(0, 15000), labels = scales::comma, expand = c(0, 0)) +
+    theme(
+      axis.title.x = element_blank(),
+      axis.title.y = element_blank(),
+      axis.ticks = element_blank(),
+      axis.text.x = element_text(colour="white"),
+      axis.text.y = element_blank(),
+      
+      plot.title = element_text(colour="white", size=14, face="bold", margin = margin(0, 0, 10, 0), hjust = 0),
+      plot.caption = element_text(colour="white", face="bold", hjust = 0),
+      plot.background = element_rect(fill = "#14243E"),
+      
+      panel.grid.major.y = element_blank(),
+      panel.grid.minor.y = element_blank(),
+      panel.grid.major.x = element_blank(),
+      panel.grid.minor.x = element_blank(),
+      panel.background = element_blank()
+    )
+
+deaths_province_plot
+```
+
+Row {data-height=750}
+-------------------------------------
+### 11. Deaths by Province (per 100k)
+
+```{r echo=FALSE}
+deaths_prov_100k_plot
+```
+
+### 11. Code & Notes
+
+```{r eval=FALSE, echo=TRUE}
+deaths_prov_100k_plot <- ggplot(deaths_by_province, mapping = aes(province_id, max_100k)) +
+  geom_bar(stat="identity", fill = "#E63946") +
+  geom_text(mapping= aes(label = max_100k), nudge_y = 10,colour ="white") +
+  labs(
+      title = "Death by Province (per 100k)",
+      subtitle = "",
+      caption = paste(sep = " ", "Updated:", updated_date),
+      tag = ""
+    ) +
+    scale_y_continuous(limits=c(0, 200), labels = scales::comma, expand = c(0, 0)) +
+    theme(
+      axis.title.x = element_blank(),
+      axis.title.y = element_blank(),
+      axis.ticks = element_blank(),
+      axis.text.x = element_text(colour="white"),
+      axis.text.y = element_blank(),
+      
+      plot.title = element_text(colour="white", size=14, face="bold", margin = margin(0, 0, 10, 0), hjust = 0),
+      plot.caption = element_text(colour="white", face="bold", hjust = 0),
+      plot.background = element_rect(fill = "#14243E"),
+      
+      panel.grid.major.y = element_blank(),
+      panel.grid.minor.y = element_blank(),
+      panel.grid.major.x = element_blank(),
+      panel.grid.minor.x = element_blank(),
+      panel.background = element_blank()
+    )
+
+deaths_prov_100k_plot
+```
+
+Row {data-height=800}
+-------------------------------------
+### 12. Prov infections per 100,000 Population
+
+```{r echo=FALSE}
+prov_inf_100k_plot
+```
+
+### 12. Code & Notes
+
+```{r eval=FALSE, echo=TRUE}
+#calc province infections based 100k population
+cases_per_100k <-provinces %>% 
+  select(province, population, cumulative_cases) %>% 
+  group_by(province) %>% 
+  summarise(cases_per_100k = max(cumulative_cases/population) * 100000) %>% 
+  arrange(cases_per_100k) %>% 
+  mutate(province = factor(province, levels = province))
+
+prov_inf_100k_plot <- ggplot(cases_per_100k, mapping = aes(province, cases_per_100k)) +
+  geom_bar(stat="identity", fill = "#E63946") +
+  geom_text(mapping = aes(label = round(cases_per_100k, digits = 2)), nudge_y = 300, colour ="white") +
+  labs(
+      title = "Prov infections per 100,000 Population",
+      subtitle = "",
+      caption = paste(sep = " ", "Updated:", updated_date),
+      tag = ""
+    ) +
+    coord_flip()+
+    scale_y_continuous(limits=c(0, 5200), labels = scales::comma, expand = c(0, 0)) +
+    theme(
+      axis.title.x = element_blank(),
+      axis.title.y = element_blank(),
+      axis.ticks = element_blank(),
+      axis.text.y = element_text(colour="white"),
+      axis.text.x = element_blank(),
+      
+      plot.title = element_text(colour="white", size=14, face="bold", margin = margin(0, 0, 10, 0), hjust = 0),
+      plot.caption = element_text(colour="white", face="bold", hjust = 0),
+      plot.background = element_rect(fill = "#14243E"),
+      
+      panel.grid.major.y = element_blank(),
+      panel.grid.minor.y = element_blank(),
+      panel.grid.major.x = element_blank(),
+      panel.grid.minor.x = element_blank(),
+      panel.background = element_blank()
+    )
+prov_inf_100k_plot
+```
+
+Row {data-height=900}
+-------------------------------------
+### 13. Confirmed and Active Cases by Province
+
+```{r echo=FALSE}
+confirm_active_prov_plot
+```
+
+### 13. Code & Notes
+
+```{r eval=FALSE, echo=TRUE}
+confirm_active_prov_plot <- ggplot() +
+  geom_line(provinces %>% group_by(date, province) %>% summarise(max = sum(cumulative_cases)), mapping = aes(date, max, colour="Confirmed"),  na.rm = TRUE, lwd = 1.75) +
+  geom_line(provinces%>% group_by(date, province) %>% summarise(max = sum(active_cases)), mapping = aes(date, max,  colour="Active"),  lwd = 1.75) +
+  facet_wrap(vars(province), nrow = 2, ncol = 5) +
+  labs(
+      title = "Confirmed and Active Cases by Province",
+      subtitle = "",
+      caption = paste(sep = " ", "Updated:", updated_date),
+      tag = ""
+    ) +
+    scale_y_continuous(labels = scales::comma, expand = c(0, 0)) +
+    scale_x_date(date_breaks = "3 month", date_labels = "%d/%m", expand = c(0, 0)) +
+   scale_colour_manual(values = c("#BC2424", "#457B9D")) +
+    theme(
+      axis.title.x = element_blank(),
+      axis.title.y = element_blank(),
+      axis.ticks = element_blank(),
+      axis.text = element_blank(),
+
+      plot.title = element_text(colour="white", size=14, face="bold", margin = margin(0, 0, 10, 0), hjust = 0),
+      plot.caption = element_text(colour="white", face="bold", hjust = 0),
+      plot.background = element_rect(fill = "#14243E"),
+      
+      legend.justification=c(0,0),
+      legend.position=c(0,0.8),
+      legend.background = element_blank(),
+      legend.text = element_text(colour = "white"),
+      legend.key = element_blank(),
+      legend.title = element_blank(),
+      
+      
+      panel.grid.major.y = element_blank(),
+      panel.grid.minor.y = element_blank(),
+      panel.grid.major.x = element_blank(),
+      panel.grid.minor.x = element_blank(),
+      panel.background = element_blank()
+    )
+confirm_active_prov_plot
+```
+
+Row {data-height=950}
+-------------------------------------
+### 14. Average daily tests per week 
+
+```{r echo=FALSE}
+avg_daily_tests_plot
+```
+
+### 14. Code & Notes
+
+```{r eval=FALSE, echo=TRUE}
+#Calc averages for the next 3 graphs
+positive_cases_tests <- covid_data_cumulative %>% 
+  filter(date >= "2020-04-03", date <= "2021-06-25") %>% 
+  select(date, week_label, weekly_tests, weekly_cases, cases_daily) %>% 
+  arrange(desc(date)) %>% 
+  mutate(weekly_tests_week_avg = round(weekly_tests/7, 3)) %>% 
+  mutate(weekly_cases_week_avg =  round(weekly_cases/7, 3)) %>% 
+  mutate(date_name = as.character(date)) %>% 
+  mutate(rate = round((weekly_tests_week_avg/7)/(weekly_cases_week_avg/7), 3)) %>% 
+  drop_na()
+  
+
+positive_cases_tests$week_label <- factor(positive_cases_tests$week_label, levels = positive_cases_tests$week_label)
+
+avg_daily_tests_plot <- ggplot(positive_cases_tests %>% filter(date >= "2020-04-03", date <= "2021-06-25"), aes(weekly_tests_week_avg, week_label)) +
+  geom_bar(stat = "identity", fill = "#E63946", width = 0.75) +
+  geom_text(mapping = aes(label = weekly_tests_week_avg), size = 1.7, nudge_x = 1100, colour = "white") +
+  labs(
+    title = "Average daily tests per week",
+    subtitle = "",
+    caption = paste(sep = " ", "Updated:", updated_date),
+    tag = ""
+  ) +
+  scale_x_continuous(labels = scales::comma, expand = c(0, 0)) +
+  theme(
+    axis.title.x = element_blank(),
+    axis.title.y = element_blank(),
+    axis.text.x = element_blank(),
+    axis.text.y = element_text(colour="white"),
+    axis.ticks.y =  element_blank(),
+    axis.ticks.x =  element_blank(),
+
+    plot.title = element_text(colour="white", size=14, face="bold", margin = margin(0, 0, 10, 0), hjust = 0),
+    plot.caption = element_text(colour="white", face="bold", hjust = 0),
+    plot.background = element_rect(fill = "#14243E"),
+
+    panel.grid.major.y = element_blank(),
+    panel.grid.minor.y = element_blank(),
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor.x = element_blank(),
+    panel.background = element_blank()
+  )
+  
+avg_daily_tests_plot
+```
+
+Row {data-height=750}
+-------------------------------------
+### 15. Average daily positives per week
+
+```{r echo=FALSE}
+avg_daily_pos_plot
+```
+
+### 15. Code & Notes
+
+```{r eval=FALSE, echo=TRUE}
+avg_daily_pos_plot <- ggplot(positive_cases_tests , aes(weekly_cases,week_label)) +
+  geom_bar(stat = "identity", fill = "#E63946", width = 0.75) +
+  geom_text(mapping = aes(label = weekly_cases), size = 2, nudge_x = 1100, colour = "white") +
+  labs(
+    title = "Average daily positives per week",
+    subtitle = "",
+    caption = paste(sep = " ", "Updated:", updated_date),
+    tag = ""
+  ) +
+  scale_x_continuous(labels = scales::comma, expand = c(0, 0)) +
+  theme(
+    axis.title.x = element_blank(),
+    axis.title.y = element_blank(),
+    axis.text.x = element_blank(),
+    axis.text.y = element_text(colour="white"),
+    axis.ticks.y =  element_blank(),
+    axis.ticks.x =  element_blank(),
+
+    plot.title = element_text(colour="white", size=14, face="bold", margin = margin(0, 0, 10, 0), hjust = 0),
+    plot.caption = element_text(colour="white", face="bold", hjust = 0),
+    plot.background = element_rect(fill = "#14243E"),
+
+    panel.grid.major.y = element_blank(),
+    panel.grid.minor.y = element_blank(),
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor.x = element_blank(),
+    panel.background = element_blank()
+  )
+
+avg_daily_pos_plot
+```
+
+Row {data-height=700}
+-------------------------------------
+### 16. No of tests per positive case (weekly)
+
+```{r}
+num_tests_pos_plot
+```
+
+### 16. Code & Notes
+
+```{r eval=FALSE, echo=TRUE}
+num_tests_pos_plot <- ggplot(positive_cases_tests, aes(rate, week_label)) +
+  geom_bar(stat = "identity", fill = "#E63946", width = 0.75) +
+  geom_text(mapping = aes(label = rate), size = 2, nudge_x = 1, colour = "white") +
+  labs(
+      title = "No of tests per positive case (weekly)",
+      subtitle = "",
+      caption = paste(sep = " ", "Updated:", updated_date),
+      tag = ""
+    ) +
+    scale_x_continuous(labels = scales::comma, expand = c(0, 0)) +
+    theme(
+      axis.title.x = element_blank(),
+      axis.title.y = element_blank(),
+      axis.text.x = element_blank(),
+      axis.text.y = element_text(colour="white"),
+      axis.ticks.y =  element_blank(),
+      axis.ticks.x =  element_blank(),
+  
+      plot.title = element_text(colour="white", size=14, face="bold", margin = margin(0, 0, 10, 0), hjust = 0),
+      plot.caption = element_text(colour="white", face="bold", hjust = 0),
+      plot.background = element_rect(fill = "#14243E"),
+  
+      panel.grid.major.y = element_blank(),
+      panel.grid.minor.y = element_blank(),
+      panel.grid.major.x = element_blank(),
+      panel.grid.minor.x = element_blank(),
+      panel.background = element_blank()
+    )
+num_tests_pos_plot
+```
+
+Row {data-height=1000}
+-------------------------------------
+### 17. Daily Tests and Positive Cases 
+
+```{r echo=FALSE}
+daily_tests_and_pos_plot
+```
+
+### 17. Code & Notes
+
+```{r eval=FALSE, echo=TRUE}
+pos_daily_tests <- covid_data_cumulative %>% 
+  arrange(date) %>% 
+  select(date, tests_daily, cases_daily) %>% 
+  filter(tests_daily >= 0) %>% 
+  drop_na()
+ 
+daily_tests_and_pos_plot <- ggplot(pos_daily_tests, aes(date, tests_daily, size = cases_daily)) +
+  geom_point(stat = "identity", colour = "#E63946", fill = "#418D3F") +
+  geom_text(label = pos_daily_tests$cases_daily, size = 2, colour = "white", nudge_y = 10000, check_overlap = TRUE) +
+  scale_x_date(date_breaks = "1 month", date_labels = ("%d/%m")) +
+  labs(
+      title = "Number of tests per day",
+      subtitle = "",
+      caption = paste(sep = " ", "Updated:", updated_date),
+      tag = ""
+    ) +
+    theme(
+      axis.title.x = element_blank(),
+      axis.title.y = element_blank(),
+      axis.text.x = element_text(colour="white"),
+      axis.text.y = element_text(colour="white"),
+      axis.ticks.y =  element_blank(),
+  
+      plot.title = element_text(colour="white", size=14, face="bold", margin = margin(0, 0, 10, 0), hjust = 0),
+      plot.caption = element_text(colour="white", face="bold", hjust = 0),
+      plot.background = element_rect(fill = "#14243E"),
+      
+      legend.justification=c(0,0),
+      legend.position=c(0,-1),
+      legend.background = element_blank(),
+      legend.text = element_blank(),
+      legend.key = element_blank(),
+      legend.title = element_blank(),
+        
+  
+      panel.grid.major.y = element_line(colour = "white", linetype = "dotted"),
+      panel.grid.minor.y = element_blank(),
+      panel.grid.major.x = element_blank(),
+      panel.grid.minor.x = element_blank(),
+      panel.background = element_blank()
+    )
+ daily_tests_and_pos_plot
+```
+
+Row {data-height=750}
+-------------------------------------
+### 18. Confirmed Infections (last 20 days)
+
+```{r echo=FALSE}
+confirmed_inf_plot
+```
+
+### 18. Code & Notes
+
+```{r eval=FALSE, echo=TRUE}
+covid_data_cumulative_20_days <- covid_data_cumulative %>% 
+          filter(date > "2021-06-02" & date < "2021-06-22") %>% 
+          arrange(desc(date)) %>% 
+          mutate(date_ch = as.character(date)) %>% 
+          mutate(date_ch = factor(date_ch, levels = date_ch))
+
+confirmed_inf_plot <- ggplot(covid_data_cumulative_20_days, aes(date_ch ,cases_daily)) +
+   geom_bar(stat = "identity", fill = "#E63946", width = 0.75) +
+   geom_text(mapping = aes(label = cases_daily), size = 3, nudge_y = 300, colour = "white") +
+   coord_flip() +
+  
+  labs(
+        title = "No of tests per positive case (weekly)",
+        subtitle = "",
+        caption = paste(sep = " ", "Updated:", updated_date),
+        tag = ""
+      ) +
+      theme(
+        axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        axis.text.x = element_blank(),
+        axis.text.y = element_text(colour="white"),
+        axis.ticks.y =  element_blank(),
+        axis.ticks.x =  element_blank(),
+      
+    
+        plot.title = element_text(colour="white", size=14, face="bold", margin = margin(0, 0, 10, 0), hjust = 0),
+        plot.caption = element_text(colour="white", face="bold", hjust = 0),
+        plot.background = element_rect(fill = "#14243E"),
+    
+        panel.grid.major.y = element_blank(),
+        panel.grid.minor.y = element_blank(),
+        panel.grid.major.x = element_blank(),
+        panel.grid.minor.x = element_blank(),
+        panel.background = element_blank()
+      )
+confirmed_inf_plot
+```
+
+Row {data-height=800}
+-------------------------------------
+### 19. Positivity Rate Number of Tests vs Positive Cases
+
+```{r echo=FALSE}
+pos_rate_plot
+```
+
+### 19. Code & Notes
+
+```{r eval=FALSE, echo=TRUE}
+pos_rate <- covid_data_cumulative %>%
+  filter(date >= "2021-05-25", date <= "2021-06-20") %>%
+  arrange(date) %>% mutate(perc_positive = gsub("%", "", perc_positive), seven_day_average = gsub("%", "", seven_day_average)) %>%
+  mutate(perc_positive = as.integer(perc_positive), seven_day_average = as.integer(seven_day_average))
+
+pos_rate_plot <- ggplot(pos_rate, aes(x = date)) +
+  geom_bar(stat = "identity", fill = "#457B9D", mapping = aes(y = tests_daily, colour = "Tests Conducted"), na.rm=TRUE, width = 0.75) +
+  geom_line(color = "#E63946", mapping = aes(y = perc_positive*2420, colour = "Positive Tests (%)"), na.rm=TRUE, lwd=1.5) +
+  geom_smooth(fullrange=TRUE, method="lm", formula = "y ~ x", linetype="dotted", color = "white", mapping = aes(y = rollmean(perc_positive * 2400, k = 7, na.pad=TRUE), colour = "7-Day Rolling Average -----"),na.rm=TRUE, lwd=1.5, alpha = 0) +
+  scale_x_date(breaks = "1 day", date_labels = "%d/%m", expand = c(0, 0)) +
+  scale_y_continuous(labels = scales::comma, expand = c(0, 0), n.breaks = 10) +
+  scale_colour_manual(values = c("#457B9D", "#E63946", "white")) +
+    labs(
+          title = "Positivity Rate: Number of Tests vs Positive Cases (%)",
+          subtitle = "",
+          caption = paste(sep = " ", "Updated:", updated_date),
+          tag = ""
+        ) +
+        theme(
+          axis.title.x = element_blank(),
+          axis.title.y = element_blank(),
+          axis.text.x = element_text(colour="white"),
+          axis.text.y = element_text(colour="white"),
+          axis.ticks.y =  element_blank(),
+  
+          legend.justification=c(0,0),
+          legend.position=c(0,0.8),
+          legend.background = element_blank(),
+          legend.text = element_text(colour = "white"),
+          legend.key = element_blank(),
+          legend.title = element_blank(),
+      
+          plot.title = element_text(colour="white", size=14, face="bold", margin = margin(0, 0, 10, 0), hjust = 0),
+          plot.caption = element_text(colour="white", face="bold", hjust = 0),
+          plot.background = element_rect(fill = "#14243E"),
+  
+          panel.grid.major.y = element_line(colour = "white", linetype = "dotted"),
+          panel.grid.minor.y = element_blank(),
+          panel.grid.major.x = element_blank(),
+          panel.grid.minor.x = element_blank(),
+          panel.background = element_blank()
+        )
+pos_rate_plot
+```
+
+Row {data-height=850}
+-------------------------------------
+### 20. National Hospital Admissions
+
+```{r echo=FALSE}
+hosp_admissions_plot
+```
+
+### 20. Code & Notes
+
+```{r eval=FALSE, echo=TRUE}
+epi_week_mutated <- epi_week %>%
+  arrange(year) %>%
+  mutate(week_start = factor(week_start, levels = week_start)) %>%
+  mutate(week = gsub("\\s", "0", format(epi_week$week, width=max(nchar(epi_week$week))))) %>%
+  mutate(week = as.numeric(week)) %>%
+  mutate(week = as.Date(week, format = "%W")) %>%
+  arrange(year, week) %>%
+  mutate(week_start = as.Date(week_start, format = "%Y-%m-%d"))
+
+
+
+hosp_admissions_plot <- ggplot(epi_week_mutated, aes(x = week_start, y = total_national_hospital_admissions)) +
+geom_line(stat = "identity", lwd = 1.75, colour = "#E63946") +
+  scale_x_date(date_breaks = "1 week", date_labels = ("%W"), expand = c(0,0)) +
+  scale_y_continuous(limits = c(0, 20000), labels = scales::comma, expand = c(0, 0)) +
+  labs(
+        title = "No of tests per positive case (weekly)",
+        subtitle = "",
+        caption = paste(sep = " ", "Updated:", updated_date),
+        tag = ""
+      ) +
+      theme(
+        axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        axis.text.x = element_text(colour="white"),
+        axis.text.y = element_text(colour="white"),
+        axis.ticks.y =  element_blank(),
+    
+        plot.title = element_text(colour="white", size=14, face="bold", margin = margin(0, 0, 10, 0), hjust = 0),
+        plot.caption = element_text(colour="white", face="bold", hjust = 0),
+        plot.background = element_rect(fill = "#14243E"),
+    
+        panel.grid.major.y = element_line(colour = "white", linetype = "dotted"),
+        panel.grid.minor.y = element_blank(),
+        panel.grid.major.x = element_blank(),
+        panel.grid.minor.x = element_blank(),
+        panel.background = element_blank()
+      )
+hosp_admissions_plot
+```
+
+Row {data-height=500}
+-------------------------------------
+### 21. Public vs. Private Tests
+
+```{r echo=FALSE}
+tests_table
+```
+
+### 21. Code & Notes
+
+```{r eval=FALSE, echo=TRUE}
+tests_table <- covid_data_cumulative %>%
+  filter(date == "2021-06-20") %>%
+  select(cumulative_tests, public_tests, private_tests, new_public_tests, new_private_tests) %>%
+  rename(Total_Tests = cumulative_tests, Total_Public_Tests = public_tests, Total_Private_Tests = private_tests, New_Public_Tests = new_public_tests, New_Private_Tests = new_private_tests) %>%
+  mutate(Total_Public_Tests = as.integer(Total_Public_Tests), Total_Tests = as.integer(Total_Tests), Total_Private_Tests = as.integer(Total_Private_Tests), New_Public_Tests = as.integer(New_Public_Tests), New_Private_Tests = as.integer(New_Private_Tests)) %>%
+  mutate(Total_New_Tests = (New_Private_Tests + New_Public_Tests)) %>%
+  mutate(Total_Public_Tests = paste(Total_Public_Tests, round(Total_Public_Tests / Total_Tests * 100, digits = 1), sep = ": % = ")) %>%
+  mutate(Total_Private_Tests = paste(Total_Private_Tests, round(Total_Private_Tests / Total_Tests * 100, digits = 1), sep = ": % = ")) %>%
+  mutate(New_Private_Tests = paste(New_Private_Tests, round(New_Private_Tests / Total_New_Tests * 100, digits = 1), sep = ": % = ")) %>%
+  mutate(New_Public_Tests = paste(New_Public_Tests, round(New_Public_Tests / Total_New_Tests * 100, digits = 1), sep = ": % = ")) %>%
+  mutate(Total_Public_Tests = as.character(Total_Public_Tests), Total_Tests = as.character(Total_Tests), Total_Private_Tests = as.character(Total_Private_Tests), New_Public_Tests = as.character(New_Public_Tests), New_Private_Tests = as.character(New_Private_Tests)) %>%
+  select(-Total_New_Tests) %>%
+  pivot_longer(cols = everything(), names_to = "Test.Data", values_to = "Amount") %>%
+  mutate(Test.Data = (gsub("_", " ", Test.Data))) %>%
+  gt() %>%
+    tab_header(
+    title = "Public vs. Private Tests",
+  ) %>%
+    data_color(
+    columns = "Test.Data",
+    colors = "#E63946",
+    alpha = NULL,
+    apply_to = c("fill", "text"),
+    autocolor_text = TRUE
+  )
+tests_table
+```
+
+Row {data-height=1000}
+-------------------------------------
+### 22. Current Rt estimates for South Africa
+
+```{r echo=FALSE}
+rt_plot
+```
+
+### 22. Code & Notes
+
+```{r eval=FALSE, echo=TRUE}
+rt_estimates <- rt_estimates %>%
+  select(date, location, mlrt, low, high) %>%
+  mutate(date = as.Date(date, format = "%Y-%m-%d")) %>%
+  filter(location == "total")
+
+
+rt_plot <- ggplot(data = rt_estimates,mapping = aes(x = date, y = mlrt)) +
+  geom_point(expand = c(0, 0), colour = "#E63946") +
+  geom_line(expand = c(0, 0), colour = "#E63946") +
+  geom_ribbon(mapping = aes(ymin = low, ymax = high, colour = "90% CREDIBLE INTERVAL"), alpha = 0.2) +
+  scale_x_date(breaks = "4 months", date_labels = "%m %Y") +
+  scale_y_continuous(limits = c(0,3), labels = scales::comma, expand = c(0, 0)) +
+  coord_cartesian(ylim=c(0, 3), expand = c(0,0)) +
+    labs(
+          title = "Current Rt estimates for South Africa",
+          subtitle = "This chart displays the latest reproduction estimates for South Africa.",
+          caption = paste(sep = " ", "Updated:", updated_date),
+          tag = ""
+        ) +
+        theme(
+          axis.title.x = element_blank(),
+          axis.title.y = element_blank(),
+          axis.text.x = element_text(colour="white"),
+          axis.text.y = element_text(colour="white"),
+          axis.ticks.y =  element_blank(),
+          
+          legend.justification=c(0,0),
+          legend.position=c(0.8, 1),
+          legend.background = element_blank(),
+          legend.text = element_text(colour = "white"),
+          legend.key = element_blank(),
+          legend.title = element_blank(),
+      
+          plot.title = element_text(colour="white", size=14, face="bold", margin = margin(0, 0, 10, 0), hjust = 0),
+          plot.caption = element_text(colour="white", face="bold", hjust = 0),
+          plot.subtitle = element_text(colour="white", face="bold", hjust = 0),
+          plot.background = element_rect(fill = "#14243E"),
+      
+          panel.grid.major.y = element_line(colour = "white", linetype = "dotted"),
+          panel.grid.minor.y = element_blank(),
+          panel.grid.major.x = element_blank(),
+          panel.grid.minor.x = element_blank(),
+          panel.background = element_blank()
+        )
+rt_plot
+```
+
+Row {data-height=900}
+-------------------------------------
+### 23. Excess Deaths (South Africa)
+
+```{r echo=FALSE}
+exc_deaths_ZA_plot 
+```
+
+### 23. Code & Notes
+
+```{r eval=FALSE, echo=TRUE}
+excess_deaths_all_filtered <- excess_deaths_all %>% 
+  rename(week = X, RSA = X.17) %>% 
+  select(week, RSA) %>% 
+  mutate(RSA = (gsub("RSA", "", RSA))) %>% 
+  mutate(RSA = as.integer(gsub(" ", "", RSA))) %>% 
+  drop_na() %>% 
+  filter(week != "Total")
+
+may3_june19_excess <- excess_deaths_all_filtered %>%
+  mutate(Total = sum(excess_deaths_all_filtered$RSA)) %>% 
+  mutate(date = "19-06-2021") %>%
+  mutate(date = as.Date(date, format = "%d-%m-%Y"))
+may3_june12_excess <- excess_deaths_all_filtered %>%  
+  filter(week != "13-Jun-21") %>%
+  mutate(Total = sum(excess_deaths_all_filtered$RSA)) %>% 
+  mutate(date = "12-06-2021") %>%
+  mutate(date = as.Date(date, format = "%d-%m-%Y"))
+may3_june05_excess <- excess_deaths_all_filtered %>% 
+  filter(week != "13-Jun-21", week != "06-Jun-21") %>% 
+  mutate(Total = sum(excess_deaths_all_filtered$RSA)) %>% 
+  mutate(date = "05-06-2021") %>%
+  mutate(date = as.Date(date, format = "%d-%m-%Y"))
+ 
+ 
+covid_data_provincial_deaths_filtered <- covid_data_provincial_deaths %>%
+  select(c(date, total)) %>% 
+  rename(reported_deaths = total)
+ 
+may3_june19_reported <- covid_data_provincial_deaths_filtered %>% 
+  filter(date == "19-06-2021") %>%
+  mutate(date = as.Date(date, format = "%d-%m-%Y"))
+may3_june12_reported <- covid_data_provincial_deaths_filtered %>% 
+  filter(date == "12-06-2021") %>%
+  mutate(date = as.Date(date, format = "%d-%m-%Y"))
+may3_june05_reported <- covid_data_provincial_deaths_filtered %>% 
+  filter(date == "05-06-2021") %>%
+  mutate(date = as.Date(date, format = "%d-%m-%Y"))
+ 
+ 
+#join the two data sets
+SA_covid_deaths_19june <- inner_join(may3_june19_excess, may3_june19_reported) %>% 
+  mutate(excess_total = Total - reported_deaths, row = row_number()) %>% 
+  filter(row == 1) %>% 
+  select(row, date, Total, reported_deaths, excess_total)
+SA_covid_deaths_12june <- inner_join(may3_june12_excess, may3_june12_reported) %>% 
+  mutate(excess_total = Total - reported_deaths, row = row_number()) %>%
+  filter(row == 1) %>% 
+  select(row, date, Total, reported_deaths, excess_total)
+SA_covid_deaths_05june <- inner_join(may3_june05_excess, may3_june05_reported) %>% 
+  mutate(excess_total = Total - reported_deaths, row = row_number()) %>% 
+  filter(row == 1) %>% 
+  select(row, date, Total, reported_deaths, excess_total)
+
+SA_covid_deaths_05june_12june <- inner_join(SA_covid_deaths_05june, SA_covid_deaths_12june, by = c("row"))
+ 
+SA_covid_deaths_05june_19june <- inner_join(SA_covid_deaths_05june_12june, SA_covid_deaths_19june, by = c("row")) %>%
+  pivot_longer(cols = c(reported_deaths, Total, reported_deaths.x, Total.x, reported_deaths.y, Total.y) , names_to = "death_label", values_to = "deaths") %>%
+  select(-row, -excess_total, -excess_total.x, -excess_total.y) %>% 
+  rename(may3_june19 = date, may3_june12 = date.y, may3_june5 = date.x) %>% 
+  mutate(may3_june19 = as.character(may3_june19),may3_june19 = (gsub("2021-06-19", "3 May - 19 June", may3_june19))) %>% 
+  mutate(may3_june12 = as.character(may3_june12),may3_june12 = (gsub("2021-06-12", "3 May - 12 June", may3_june12))) %>% 
+  mutate(may3_june5 = as.character(may3_june5),may3_june5 = (gsub("2021-06-05", "3 May - 5 June", may3_june5))) %>%
+  pivot_longer(cols = c(may3_june5, may3_june12, may3_june19), names_to = "date", values_to = "week") %>% 
+  mutate(row = row_number()) %>% 
+  mutate(death_label = (gsub("reported_deaths.x", "reported_deaths", death_label)), death_label = (gsub("reported_deaths.y", "reported_deaths", death_label)), death_label = (gsub("Total.x", "Total", death_label)), death_label = (gsub("Total.y", "Total", death_label))) %>% 
+  filter(row != "1", row != "2", row != "4", row != "5", row != "8", row != "9", row != "11", row != "12", row != "13", row != "15", row != "16", row != "18") %>% 
+  select(-row) 
+ 
+SA_covid_deaths_05june_19june <- SA_covid_deaths_05june_19june %>% 
+  pivot_wider(id_cols = week, names_from = death_label, values_from = deaths) %>% 
+  mutate(Total = Total - reported_deaths) %>% 
+  pivot_longer(cols = c(Total, reported_deaths), names_to = "death_label", values_to = "deaths")
+ 
+  
+ 
+
+exc_deaths_ZA_plot <- ggplot(SA_covid_deaths_05june_19june, aes(x= reorder(week, deaths), y = deaths, fill= death_label)) +
+geom_col(position = position_stack(reverse = TRUE))+
+   geom_text(label = SA_covid_deaths_05june_19june$deaths, vjust = 0, size = 3, colour="white") + 
+  labs(
+        title = "Data for week ending 2021-06-19",
+        subtitle = "",
+        caption = paste(sep = " ", "Updated:", updated_date),
+        tag = ""
+      ) +
+      scale_y_continuous(limits = c(0,200000),labels = scales::comma, expand = c(0, 0), breaks = c(0, 100000, 200000)) +
+      scale_fill_manual(values = c("#E63946", "#457B9D")) +
+      theme(
+        axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        axis.ticks = element_blank(),
+        axis.text = element_text(colour="white"),
+  
+        plot.title = element_text(colour="white", size=14, face="bold", margin = margin(0, 0, 10, 0), hjust = 0),
+        plot.caption = element_text(colour="white", face="bold", hjust = 0),
+        plot.background = element_rect(fill = "#14243E"),
+        
+        legend.justification=c(0,0),
+        legend.position=c(0,-1),
+        legend.background = element_blank(),
+        legend.text = element_blank(),
+        legend.key = element_blank(),
+        legend.title = element_blank(),
+        
+        panel.grid.major.y = element_line(linetype = "dotted", colour = "white"),
+        panel.grid.minor.y = element_blank(),
+        panel.grid.major.x = element_blank(),
+        panel.grid.minor.x = element_blank(),
+        panel.background = element_blank()
+      )
+exc_deaths_ZA_plot
+```
+
+Row {data-height=1500}
+-------------------------------------
+### 24. Excess Deaths (Provinces)
+
+```{r echo=FALSE}
+exc_deaths_prov_plot
+```
+
+### 24. Code & Notes
+
+```{r eval=FALSE, echo=TRUE}
+est_deaths_prov <- read.csv2("data_in/estimated_deaths_provinces.csv", skip=1) 
+colnames(est_deaths_prov)[1] <- "week"
+colnames(est_deaths_prov)[2] <- "date"
+
+est_deaths_prov_filtered <- est_deaths_prov %>%
+  filter(week == "3 May 2020 - 19 Jun 2021") %>%
+  select(-SOUTH.AFRICA, -week) %>%
+  pivot_longer(est_deaths_prov, cols = !date, names_to = "provinces", values_to = "excess_total") %>%
+  mutate(provinces = str_replace(provinces, "NORTHERN.CAPE", "NC")) %>%
+  mutate(provinces = str_replace(provinces, "EASTERN.CAPE", "EC")) %>%
+  mutate(provinces = str_replace(provinces, "WESTERN.CAPE", "WC")) %>%
+  mutate(provinces = str_replace(provinces, "NORTH.WEST", "NW")) %>%
+  mutate(provinces = str_replace(provinces, "LIMPOPO", "LP")) %>%
+  mutate(provinces = str_replace(provinces, "MPUMALANGA", "MP")) %>%
+  mutate(provinces = str_replace(provinces, "KWAZULU.NATAL", "KZN")) %>%
+  mutate(provinces = str_replace(provinces, "GAUTENG", "GP")) %>%
+  mutate(provinces = str_replace(provinces, "FREE.STATE", "FS")) %>%
+  mutate(date = "19-06-2021") %>%
+  mutate(date = as.Date(date, format = "%d-%m-%Y"))
+
+covid_data_provincial_deaths_filtered <- covid_data_provincial_deaths %>%
+select(c(date, EC, FS, GP, WC, KZN, LP, MP, NW, NC)) %>%
+filter(date == "19-06-2021") %>%
+mutate(date = as.Date(date, format = "%d-%m-%Y"))
+
+covid_data_provincial_deaths_filtered <- pivot_longer(covid_data_provincial_deaths_filtered, cols = !date, names_to = "provinces", values_to = "reported_total") %>%
+mutate(reported_total = as.double(reported_total))
+
+#join the two data sets
+total_covid_deaths <- inner_join(est_deaths_prov_filtered, covid_data_provincial_deaths_filtered) %>%
+mutate(excess_total = excess_total - reported_total) %>%
+pivot_longer(cols = c(reported_total, excess_total) , names_to = "death_label", values_to = "deaths") %>%
+arrange(death_label, deaths)
+
+exc_deaths_prov_plot <- ggplot(total_covid_deaths, aes(reorder(provinces, -deaths), deaths, fill= death_label)) +
+    geom_col() +
+    geom_text(label = total_covid_deaths$deaths, vjust = 0, size = 3, colour="white") + 
+    labs(
+        title = "Data for week ending 2021-06-19",
+        subtitle = "",
+        caption = paste(sep = " ", "Updated:", updated_date),
+        tag = ""
+      ) +
+      scale_y_continuous(labels = scales::comma, expand = c(0, 0), breaks = c(0, 20000, 40000)) +
+      scale_fill_manual(values = c("#457B9D", "#E63946")) +
+      theme(
+        axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        axis.ticks = element_blank(),
+        axis.text = element_text(colour="white"),
+  
+        plot.title = element_text(colour="white", size=14, face="bold", margin = margin(0, 0, 10, 0), hjust = 0),
+        plot.caption = element_text(colour="white", face="bold", hjust = 0),
+        plot.background = element_rect(fill = "#14243E"),
+        
+        legend.justification=c(0,0),
+        legend.position=c(0,-1),
+        legend.background = element_blank(),
+        legend.text = element_blank(),
+        legend.key = element_blank(),
+        legend.title = element_blank(),
+        
+        panel.grid.major.y = element_line(linetype = "dotted", colour = "white"),
+        panel.grid.minor.y = element_blank(),
+        panel.grid.major.x = element_blank(),
+        panel.grid.minor.x = element_blank(),
+        panel.background = element_blank()
+)
+exc_deaths_prov_plot
+```
+
+Row {data-height=750}
+-------------------------------------
+### 25. Excess Deaths (Metros)
+
+```{r echo=FALSE}
+exc_deaths_metro_plot
+```
+
+### 25. Code & Notes
+
+```{r eval=FALSE, echo=TRUE}
+excess_deaths_all[is.na(excess_deaths_all)] <- 0
+excess_deaths_all_metro <- excess_deaths_all %>%
+rename(week = X, BC = X.9, CT = X.10, EKH = X.11, ETH = X.12, JHB = X.13, MN = X.14, NMB = X.15, TSH = X.16) %>%
+select(week, BC, CT, EKH, ETH, JHB, MN, NMB, TSH) %>%
+filter(week == "Total") %>%
+mutate(BC = as.integer(gsub(" ", "", BC))) %>%
+mutate(CT = as.integer(gsub(" ", "", CT))) %>%
+mutate(EKH = as.integer(gsub(" ", "", EKH))) %>%
+mutate(ETH = as.integer(gsub(" ", "", ETH))) %>%
+mutate(JHB = as.integer(gsub(" ", "", JHB))) %>%
+mutate(MN = as.integer(gsub(" ", "", MN))) %>%
+mutate(NMB = as.integer(gsub(" ", "", NMB))) %>%
+mutate(TSH = as.integer(gsub(" ", "", TSH))) %>%
+pivot_longer(cols = !week, names_to = "metros", values_to = "excess_total")
+
+
+
+exc_deaths_metro_plot <- ggplot(excess_deaths_all_metro, aes(x= reorder(metros, -excess_total), y=excess_total)) +
+geom_col(fill = "#457B9D") +
+   geom_text(label = excess_deaths_all_metro$excess_total, vjust = 0, size = 3, colour="white") + 
+  labs(
+        title = "Data for week ending 2021-06-19",
+        subtitle = "",
+        caption = paste(sep = " ", "Updated:", updated_date),
+        tag = ""
+      ) +
+      scale_y_continuous(limits = c(0, 15000),labels = scales::comma, expand = c(0, 0), breaks = c(0, 5000, 10000, 15000)) +
+      theme(
+        axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        axis.ticks = element_blank(),
+        axis.text = element_text(colour="white"),
+  
+        plot.title = element_text(colour="white", size=14, face="bold", margin = margin(0, 0, 10, 0), hjust = 0),
+        plot.caption = element_text(colour="white", face="bold", hjust = 0),
+        plot.background = element_rect(fill = "#14243E"),
+        
+        legend.justification=c(0,0),
+        legend.position=c(0,-1),
+        legend.background = element_blank(),
+        legend.text = element_blank(),
+        legend.key = element_blank(),
+        legend.title = element_blank(),
+        
+        panel.grid.major.y = element_line(linetype = "dotted", colour = "white"),
+        panel.grid.minor.y = element_blank(),
+        panel.grid.major.x = element_blank(),
+        panel.grid.minor.x = element_blank(),
+        panel.background = element_blank()
+      )
+
+exc_deaths_metro_plot
+```
+
+Row {data-height=1100}
+-------------------------------------
+### 26. New daily confirmed Covid-19 cases: 7-day average
+
+```{r echo=FALSE}
+confirmed_7_day_avg_plot
+```
+
+### 26. Code & Notes
+
+```{r eval=FALSE, echo=TRUE}
+#Add continents total to data
+continents_data_filtered <- continents_data %>%
+  mutate(Date = as.Date(Date, format = "%Y-%m-%d")) %>% 
+  select(-Deaths) %>% 
+  pivot_wider(id_cols = Date, names_from = Geography, values_from = Cases) 
+
+continents_data_filtered <- continents_data_filtered %>% 
+  mutate(World = rowSums(continents_data_filtered[,-1])) %>% 
+  pivot_longer(cols = -Date, names_to = "Geography", values_to = "Cases") %>% 
+  arrange(Geography)
+  
+
+
+confirmed_7_day_avg_plot <- ggplot(data = continents_data_filtered, mapping = aes(x = Date, y = rollmean(Cases, k = 7, na.pad = TRUE)))+
+  geom_line(mapping = aes(colour = Geography), na.rm = TRUE, lwd = 1.25) +
+  scale_x_date(breaks = "4 months", date_labels = "%m") +
+  scale_y_continuous(limits = c(0,1000000), labels = scales::comma, expand = c(0, 0), breaks = c(0,200000,400000,600000,800000)) +
+  labs(
+        title = "New daily confirmed Covid-19 cases: 7-day average",
+        subtitle = "",
+        caption = paste(sep = " ", "Updated:", updated_date),
+        tag = ""
+      ) +
+      theme(
+        axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        axis.text.x = element_text(colour="white"),
+        axis.text.y = element_text(colour="white"),
+        axis.ticks.y =  element_blank(),
+        
+        legend.justification=c(0,0),
+        legend.position=c(0.05, 0.6),
+        legend.background = element_blank(),
+        legend.text = element_text(colour = "white", face = "bold"),
+        legend.key = element_blank(),
+        legend.title = element_blank(),
+    
+        plot.title = element_text(colour="white", size=14, face="bold", margin = margin(0, 0, 10, 0), hjust = 0),
+        plot.caption = element_text(colour="white", face="bold", hjust = 0),
+        plot.background = element_rect(fill = "#14243E"),
+    
+        panel.grid.major.y = element_line(colour = "white", linetype = "dotted"),
+        panel.grid.minor.y = element_blank(),
+        panel.grid.major.x = element_blank(),
+        panel.grid.minor.x = element_blank(),
+        panel.background = element_blank()
+      )
+confirmed_7_day_avg_plot
+```
+
+
+
+
+
